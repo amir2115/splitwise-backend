@@ -1,0 +1,10 @@
+.DS_Store
+.idea/
+.venv/
+.env
+.pytest_cache/
+**/__pycache__/
+*.pyc
+android/
+web/
+backend/
