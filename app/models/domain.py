@@ -1,6 +1,6 @@
 from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -12,25 +12,84 @@ class SplitType(str, Enum):
     EXACT = "EXACT"
 
 
+class MembershipStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    PENDING_INVITE = "PENDING_INVITE"
+
+
+class GroupInviteStatus(str, Enum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+
+
 class Group(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "groups"
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     user = relationship("User", back_populates="groups")
+    memberships = relationship("GroupMembership", back_populates="group", cascade="all, delete-orphan")
     members = relationship("Member", back_populates="group", cascade="all, delete-orphan")
+    invites = relationship("GroupInvite", back_populates="group", cascade="all, delete-orphan")
     expenses = relationship("Expense", back_populates="group", cascade="all, delete-orphan")
     settlements = relationship("Settlement", back_populates="group", cascade="all, delete-orphan")
 
 
 class Member(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "members"
+    __table_args__ = (UniqueConstraint("group_id", "username", name="uq_members_group_username"),)
 
     group_id: Mapped[str] = mapped_column(String(36), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    username: Mapped[str] = mapped_column(String(64), nullable=False)
+    linked_user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    membership_status: Mapped[MembershipStatus] = mapped_column(
+        SqlEnum(MembershipStatus, name="membership_status"),
+        nullable=False,
+    )
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     group = relationship("Group", back_populates="members")
+    linked_user = relationship("User", foreign_keys=[linked_user_id])
+
+
+class GroupMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "group_memberships"
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_group_memberships_group_user"),)
+
+    group_id: Mapped[str] = mapped_column(String(36), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[MembershipStatus] = mapped_column(SqlEnum(MembershipStatus, name="membership_status"), nullable=False)
+
+    group = relationship("Group", back_populates="memberships")
+    user = relationship("User")
+
+
+class GroupInvite(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "group_invites"
+
+    group_id: Mapped[str] = mapped_column(String(36), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    inviter_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    invitee_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    member_id: Mapped[str] = mapped_column(String(36), ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[GroupInviteStatus] = mapped_column(SqlEnum(GroupInviteStatus, name="group_invite_status"), nullable=False)
+    responded_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    group = relationship("Group", back_populates="invites")
+    inviter_user = relationship("User", foreign_keys=[inviter_user_id])
+    invitee_user = relationship("User", foreign_keys=[invitee_user_id])
+    member = relationship("Member")
+
+
+class UserConnection(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "user_connections"
+    __table_args__ = (UniqueConstraint("user_low_id", "user_high_id", name="uq_user_connections_pair"),)
+
+    user_low_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_high_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    user_low = relationship("User", foreign_keys=[user_low_id])
+    user_high = relationship("User", foreign_keys=[user_high_id])
 
 
 class Expense(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteMixin, Base):

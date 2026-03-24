@@ -35,15 +35,15 @@ def test_balance_calculation_behavior(client, auth_headers, seeded_group):
     assert response.status_code == 200
     balances = {item["member_name"]: item for item in response.json()["balances"]}
 
-    assert balances["Alice"]["paid_total"] == 900
-    assert balances["Alice"]["owed_total"] == 500
-    assert balances["Alice"]["net_balance"] == 400
+    assert balances["alice"]["paid_total"] == 900
+    assert balances["alice"]["owed_total"] == 500
+    assert balances["alice"]["net_balance"] == 400
 
-    assert balances["Bob"]["paid_total"] == 200
-    assert balances["Bob"]["owed_total"] == 300
-    assert balances["Bob"]["net_balance"] == -100
+    assert balances["bob"]["paid_total"] == 200
+    assert balances["bob"]["owed_total"] == 300
+    assert balances["bob"]["net_balance"] == -100
 
-    assert balances["Carol"]["net_balance"] == -300
+    assert balances["carol"]["net_balance"] == -300
 
     simplified = response.json()["simplified_debts"]
     assert simplified == [

@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models.domain import UserConnection
 
 
 SQLALCHEMY_DATABASE_URL = "sqlite://"
@@ -19,6 +20,27 @@ engine = create_engine(
     future=True,
 )
 TestingSessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, future=True)
+
+
+def register_user(client: TestClient, *, name: str, username: str, password: str = "password123") -> dict:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"name": name, "username": username, "password": password},
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    return {
+        "user": payload["user"],
+        "headers": {"Authorization": f"Bearer {payload['tokens']['access_token']}"},
+    }
+
+
+def connect_users(db_session: Session, *user_ids: str) -> None:
+    owner_id = user_ids[0]
+    for other_id in user_ids[1:]:
+        low_id, high_id = sorted((owner_id, other_id))
+        db_session.add(UserConnection(user_low_id=low_id, user_high_id=high_id))
+    db_session.commit()
 
 
 @pytest.fixture(autouse=True)
@@ -53,31 +75,52 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
 
 @pytest.fixture
-def auth_headers(client: TestClient) -> dict[str, str]:
-    response = client.post(
-        "/api/v1/auth/register",
-        json={"name": "Owner", "username": "owner", "password": "password123"},
-    )
-    token = response.json()["tokens"]["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+def owner_account(client: TestClient) -> dict:
+    return register_user(client, name="Owner", username="owner")
 
 
 @pytest.fixture
-def seeded_group(client: TestClient, auth_headers: dict[str, str]) -> dict:
-    group = client.post("/api/v1/groups", headers=auth_headers, json={"name": "Trip"}).json()
+def auth_headers(owner_account: dict[str, dict]) -> dict[str, str]:
+    return owner_account["headers"]
+
+
+@pytest.fixture
+def second_account(client: TestClient) -> dict:
+    return register_user(client, name="Second User", username="second")
+
+
+@pytest.fixture
+def seeded_users(client: TestClient) -> dict:
+    return {
+        "owner": register_user(client, name="Owner", username="owner"),
+        "alice": register_user(client, name="Alice", username="alice"),
+        "bob": register_user(client, name="Bob", username="bob"),
+        "carol": register_user(client, name="Carol", username="carol"),
+    }
+
+
+@pytest.fixture
+def seeded_group(client: TestClient, db_session: Session, seeded_users: dict) -> dict:
+    owner = seeded_users["owner"]
+    alice_user = seeded_users["alice"]["user"]
+    bob_user = seeded_users["bob"]["user"]
+    carol_user = seeded_users["carol"]["user"]
+    connect_users(db_session, owner["user"]["id"], alice_user["id"], bob_user["id"], carol_user["id"])
+
+    group = client.post("/api/v1/groups", headers=owner["headers"], json={"name": "Trip"}).json()
     alice = client.post(
         "/api/v1/members",
-        headers=auth_headers,
-        json={"group_id": group["id"], "name": "Alice", "is_archived": False},
-    ).json()
+        headers=owner["headers"],
+        json={"group_id": group["id"], "username": "alice", "is_archived": False},
+    ).json()["member"]
     bob = client.post(
         "/api/v1/members",
-        headers=auth_headers,
-        json={"group_id": group["id"], "name": "Bob", "is_archived": False},
-    ).json()
+        headers=owner["headers"],
+        json={"group_id": group["id"], "username": "bob", "is_archived": False},
+    ).json()["member"]
     carol = client.post(
         "/api/v1/members",
-        headers=auth_headers,
-        json={"group_id": group["id"], "name": "Carol", "is_archived": False},
-    ).json()
-    return {"group": group, "members": [alice, bob, carol]}
+        headers=owner["headers"],
+        json={"group_id": group["id"], "username": "carol", "is_archived": False},
+    ).json()["member"]
+    return {"group": group, "members": [alice, bob, carol], "users": seeded_users}

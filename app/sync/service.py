@@ -1,11 +1,11 @@
 from datetime import datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import DomainError
 from app.core.time import ensure_utc, utcnow
-from app.models.domain import Expense, Group, Member, Settlement
+from app.models.domain import Expense, Group, GroupMembership, Member, MembershipStatus, Settlement
 from app.models.user import User
 from app.schemas.domain import ExpenseUpdate, GroupUpdate, MemberUpdate, SettlementUpdate
 from app.schemas.sync import InitialImportRequest, SyncPullResponse, SyncRequest, SyncResponse
@@ -19,6 +19,7 @@ from app.services.crud_service import (
     get_member,
     get_settlement,
     serialize_expense,
+    serialize_member,
     update_expense,
     update_group,
     update_member,
@@ -30,13 +31,59 @@ def _is_newer(client_updated_at: datetime | None, server_updated_at: datetime) -
     return client_updated_at is not None and ensure_utc(client_updated_at) > ensure_utc(server_updated_at)
 
 
+def _normalize_username(username: str) -> str:
+    return username.strip().lower()
+
+
+def _active_group_ids_query(user: User):
+    return select(GroupMembership.group_id).where(
+        GroupMembership.user_id == user.id,
+        GroupMembership.status == MembershipStatus.ACTIVE,
+    )
+
+
+def _validate_member_usernames(db: Session, request: SyncRequest) -> None:
+    if not request.push or not request.push.members:
+        return
+    usernames_by_member_id: dict[str, str] = {}
+    for member in request.push.members:
+        usernames_by_member_id[member.id or ""] = _normalize_username(member.username)
+    existing_usernames = {
+        item[0]
+        for item in db.execute(
+            select(User.username).where(User.username.in_(set(usernames_by_member_id.values())))
+        ).all()
+    }
+    invalid_members = [
+        {"member_id": member.id, "username": _normalize_username(member.username)}
+        for member in request.push.members
+        if _normalize_username(member.username) not in existing_usernames
+    ]
+    if invalid_members:
+        raise DomainError(
+            code="invalid_member_usernames",
+            message="Some member usernames do not exist",
+            details=invalid_members,
+        )
+
+
+def _can_access_group(db: Session, user: User, group_id: str) -> bool:
+    return db.scalar(
+        select(GroupMembership.id).where(
+            GroupMembership.group_id == group_id,
+            GroupMembership.user_id == user.id,
+            GroupMembership.status == MembershipStatus.ACTIVE,
+        )
+    ) is not None
+
+
 def _upsert_group(db: Session, user: User, payload) -> None:
     existing = db.get(Group, payload.id) if payload.id else None
     if not existing:
         create_group(db, user, payload, preserve_updated_at=getattr(payload, "updated_at", None))
         return
-    if existing.user_id != user.id:
-        raise DomainError(code="sync_conflict", message="Cannot import a group owned by another user")
+    if not _can_access_group(db, user, existing.id):
+        raise DomainError(code="sync_conflict", message="Cannot import a group without active membership")
     if _is_newer(getattr(payload, "updated_at", None), existing.updated_at):
         update_group(
             db,
@@ -55,15 +102,15 @@ def _upsert_member(db: Session, user: User, payload) -> None:
     if not existing:
         create_member(db, user, payload, preserve_updated_at=getattr(payload, "updated_at", None))
         return
-    if existing.user_id != user.id:
-        raise DomainError(code="sync_conflict", message="Cannot import a member owned by another user")
+    if not _can_access_group(db, user, existing.group_id):
+        raise DomainError(code="sync_conflict", message="Cannot import a member for an inaccessible group")
     if _is_newer(getattr(payload, "updated_at", None), existing.updated_at):
         update_member(
             db,
             user,
             existing.id,
             MemberUpdate(
-                name=payload.name,
+                username=payload.username,
                 is_archived=payload.is_archived,
                 deleted_at=getattr(payload, "deleted_at", None),
                 updated_at=getattr(payload, "updated_at", None),
@@ -76,8 +123,8 @@ def _upsert_expense(db: Session, user: User, payload) -> None:
     if not existing:
         create_expense(db, user, payload)
         return
-    if existing.user_id != user.id:
-        raise DomainError(code="sync_conflict", message="Cannot import an expense owned by another user")
+    if not _can_access_group(db, user, existing.group_id):
+        raise DomainError(code="sync_conflict", message="Cannot import an expense for an inaccessible group")
     if _is_newer(getattr(payload, "updated_at", None), existing.updated_at):
         update_expense(
             db,
@@ -101,8 +148,8 @@ def _upsert_settlement(db: Session, user: User, payload) -> None:
     if not existing:
         create_settlement(db, user, payload)
         return
-    if existing.user_id != user.id:
-        raise DomainError(code="sync_conflict", message="Cannot import a settlement owned by another user")
+    if not _can_access_group(db, user, existing.group_id):
+        raise DomainError(code="sync_conflict", message="Cannot import a settlement for an inaccessible group")
     if _is_newer(getattr(payload, "updated_at", None), existing.updated_at):
         update_settlement(
             db,
@@ -121,7 +168,10 @@ def _upsert_settlement(db: Session, user: User, payload) -> None:
 
 def _apply_tombstone(db: Session, model, user: User, entity_id: str, deleted_at: datetime) -> None:
     entity = db.get(model, entity_id)
-    if entity and entity.user_id == user.id and deleted_at > entity.updated_at:
+    if not entity:
+        return
+    group_id = entity.id if isinstance(entity, Group) else entity.group_id
+    if _can_access_group(db, user, group_id) and deleted_at > entity.updated_at:
         entity.deleted_at = deleted_at
         entity.updated_at = deleted_at
         db.commit()
@@ -139,16 +189,7 @@ def _serialize_group(group: Group) -> dict:
 
 
 def _serialize_member(member: Member) -> dict:
-    return {
-        "id": member.id,
-        "group_id": member.group_id,
-        "name": member.name,
-        "is_archived": member.is_archived,
-        "created_at": member.created_at,
-        "updated_at": member.updated_at,
-        "deleted_at": member.deleted_at,
-        "user_id": member.user_id,
-    }
+    return serialize_member(member).model_dump(mode="json")
 
 
 def _serialize_settlement(settlement: Settlement) -> dict:
@@ -167,12 +208,14 @@ def _serialize_settlement(settlement: Settlement) -> dict:
 
 
 def initial_import(db: Session, user: User, payload: InitialImportRequest) -> SyncResponse:
-    if db.scalar(select(Group.id).where(Group.user_id == user.id).limit(1)):
+    if db.scalar(select(GroupMembership.id).where(GroupMembership.user_id == user.id).limit(1)):
         raise DomainError(code="import_not_allowed", message="Initial import can only run before any synced data exists")
     return sync_user_data(db, user, SyncRequest(device_id=payload.device_id, last_synced_at=None, push=payload))
 
 
 def sync_user_data(db: Session, user: User, request: SyncRequest) -> SyncResponse:
+    _validate_member_usernames(db, request)
+
     if request.push:
         for group in request.push.groups:
             _upsert_group(db, user, group)
@@ -195,15 +238,16 @@ def sync_user_data(db: Session, user: User, request: SyncRequest) -> SyncRespons
 
     cursor = request.last_synced_at
     server_time = utcnow()
+    group_ids = _active_group_ids_query(user)
 
-    group_query = select(Group).where(Group.user_id == user.id)
-    member_query = select(Member).where(Member.user_id == user.id)
+    group_query = select(Group).where(Group.id.in_(group_ids))
+    member_query = select(Member).where(Member.group_id.in_(group_ids))
     expense_query = (
         select(Expense)
-        .where(Expense.user_id == user.id)
+        .where(Expense.group_id.in_(group_ids))
         .options(selectinload(Expense.payers), selectinload(Expense.shares))
     )
-    settlement_query = select(Settlement).where(Settlement.user_id == user.id)
+    settlement_query = select(Settlement).where(Settlement.group_id.in_(group_ids))
     if cursor:
         group_query = group_query.where(Group.updated_at > cursor)
         member_query = member_query.where(Member.updated_at > cursor)

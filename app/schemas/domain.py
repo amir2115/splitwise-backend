@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.models.domain import SplitType
+from app.models.domain import GroupInviteStatus, MembershipStatus, SplitType
 from app.schemas.common import TimestampedResponse
 
 
@@ -30,7 +30,7 @@ class GroupResponse(TimestampedResponse):
 
 class MemberBase(BaseModel):
     group_id: str
-    name: str = Field(min_length=1, max_length=255)
+    username: str = Field(min_length=3, max_length=64)
     is_archived: bool = False
 
 
@@ -41,7 +41,7 @@ class MemberCreate(MemberBase):
 
 
 class MemberUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
+    username: str | None = Field(default=None, min_length=3, max_length=64)
     is_archived: bool | None = None
     updated_at: datetime | None = None
     deleted_at: datetime | None = None
@@ -49,9 +49,28 @@ class MemberUpdate(BaseModel):
 
 class MemberResponse(TimestampedResponse):
     group_id: str
-    name: str
+    username: str
+    membership_status: MembershipStatus
     is_archived: bool
-    user_id: str
+    user_id: str | None
+
+
+class AddMemberResponse(BaseModel):
+    outcome: Literal["added", "invite_sent", "already_member"]
+    member: MemberResponse
+
+
+class GroupInviteResponse(TimestampedResponse):
+    group_id: str
+    group_name: str
+    member_id: str
+    username: str
+    inviter_user_id: str
+    inviter_username: str
+    invitee_user_id: str
+    invitee_username: str
+    status: GroupInviteStatus
+    responded_at: datetime | None
 
 
 class ExpenseParticipantAmount(BaseModel):
