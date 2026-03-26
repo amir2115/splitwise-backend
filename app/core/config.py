@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     app_latest_version_code: Optional[int] = None
     app_update_mode: str = "none"
     app_update_store_url: Optional[str] = None
+    app_update_bazaar_store_url: Optional[str] = None
+    app_update_myket_store_url: Optional[str] = None
     app_update_title: Optional[str] = None
     app_update_message: Optional[str] = None
     cors_allow_credentials: bool = True

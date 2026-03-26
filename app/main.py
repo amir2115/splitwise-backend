@@ -1,10 +1,12 @@
 import logging
+from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.health import resolve_store_url
 from app.api.router import api_router
 from app.core.config import DEFAULT_CORS_ALLOW_ORIGINS, get_settings
 from app.core.errors import DomainError
@@ -46,13 +48,13 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 
 @app.get("/health", response_model=HealthResponse)
-def root_health() -> HealthResponse:
+def root_health(x_app_store: Optional[str] = Header(default=None)) -> HealthResponse:
     return HealthResponse(
         status="ok",
         min_supported_version_code=settings.app_min_supported_version_code,
         latest_version_code=settings.app_latest_version_code,
         update_mode=None if settings.app_update_mode == "none" else settings.app_update_mode,
-        store_url=settings.app_update_store_url,
+        store_url=resolve_store_url(x_app_store),
         update_title=settings.app_update_title,
         update_message=settings.app_update_message,
     )
