@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     app_update_store_url: Optional[str] = None
     app_update_bazaar_store_url: Optional[str] = None
     app_update_myket_store_url: Optional[str] = None
+    app_update_organic_store_url: Optional[str] = None
     app_update_title: Optional[str] = None
     app_update_message: Optional[str] = None
     cors_allow_credentials: bool = True

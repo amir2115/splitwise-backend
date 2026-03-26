@@ -15,6 +15,8 @@ def resolve_store_url(app_store: Optional[str]) -> Optional[str]:
         return settings.app_update_bazaar_store_url or settings.app_update_store_url
     if normalized_store == "myket":
         return settings.app_update_myket_store_url or settings.app_update_store_url
+    if normalized_store == "organic":
+        return settings.app_update_organic_store_url or settings.app_update_store_url
     return settings.app_update_store_url
 
 
