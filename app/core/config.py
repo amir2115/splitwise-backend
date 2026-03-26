@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import List, Optional, Union
 
 from pydantic import field_validator
 
@@ -27,9 +28,15 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-me"
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 14
+    app_min_supported_version_code: Optional[int] = None
+    app_latest_version_code: Optional[int] = None
+    app_update_mode: str = "none"
+    app_update_store_url: Optional[str] = None
+    app_update_title: Optional[str] = None
+    app_update_message: Optional[str] = None
     cors_allow_credentials: bool = True
-    cors_allow_methods: list[str] = ["*"]
-    cors_allow_headers: list[str] = ["*"]
+    cors_allow_methods: List[str] = ["*"]
+    cors_allow_headers: List[str] = ["*"]
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -44,7 +51,7 @@ class Settings(BaseSettings):
 
     @field_validator("cors_allow_methods", "cors_allow_headers", mode="before")
     @classmethod
-    def normalize_list_settings(cls, value: str | list[str]) -> str | list[str]:
+    def normalize_list_settings(cls, value: Union[str, List[str]]) -> Union[str, List[str]]:
         if not isinstance(value, str):
             return value
         value = value.strip()
@@ -53,6 +60,18 @@ class Settings(BaseSettings):
         if value.startswith("["):
             return value
         return [item.strip() for item in value.split(",") if item.strip()]
+
+    @field_validator("app_update_mode", mode="before")
+    @classmethod
+    def normalize_update_mode(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized in {"", "none"}:
+            return "none"
+        if normalized not in {"soft", "hard"}:
+            raise ValueError("APP_UPDATE_MODE must be one of: none, soft, hard")
+        return normalized
 
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",

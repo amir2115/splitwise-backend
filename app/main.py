@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.api.router import api_router
 from app.core.config import DEFAULT_CORS_ALLOW_ORIGINS, get_settings
 from app.core.errors import DomainError
+from app.schemas.health import HealthResponse
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -44,6 +45,14 @@ async def validation_error_handler(_: Request, exc: RequestValidationError) -> J
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 
-@app.get("/health")
-def root_health() -> dict[str, str]:
-    return {"status": "ok"}
+@app.get("/health", response_model=HealthResponse)
+def root_health() -> HealthResponse:
+    return HealthResponse(
+        status="ok",
+        min_supported_version_code=settings.app_min_supported_version_code,
+        latest_version_code=settings.app_latest_version_code,
+        update_mode=None if settings.app_update_mode == "none" else settings.app_update_mode,
+        store_url=settings.app_update_store_url,
+        update_title=settings.app_update_title,
+        update_message=settings.app_update_message,
+    )
