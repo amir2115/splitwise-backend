@@ -1,28 +1,37 @@
-from app.api import health as health_api
-from app.main import settings as main_settings
+from app.api import app_download as app_download_api
 
 
-def test_health_defaults(client):
-    health_api.settings.app_min_supported_version_code = None
-    health_api.settings.app_latest_version_code = None
-    health_api.settings.app_update_mode = "none"
-    health_api.settings.app_update_store_url = None
-    health_api.settings.app_update_bazaar_store_url = None
-    health_api.settings.app_update_myket_store_url = None
-    health_api.settings.app_update_organic_store_url = None
-    health_api.settings.app_update_title = None
-    health_api.settings.app_update_message = None
+def setup_function() -> None:
+    app_download_api.settings.app_download_admin_secret = None
 
-    main_settings.app_min_supported_version_code = None
-    main_settings.app_latest_version_code = None
-    main_settings.app_update_mode = "none"
-    main_settings.app_update_store_url = None
-    main_settings.app_update_bazaar_store_url = None
-    main_settings.app_update_myket_store_url = None
-    main_settings.app_update_organic_store_url = None
-    main_settings.app_update_title = None
-    main_settings.app_update_message = None
 
+def seed_app_download(client, **overrides):
+    app_download_api.settings.app_download_admin_secret = "top-secret"
+    payload = {
+        "title": "دانلود اپلیکیشن",
+        "subtitle": "آخرین نسخه را از مسیر دلخواه نصب کن.",
+        "version_name": "1.4.0",
+        "version_code": 42,
+        "min_supported_version_code": 12,
+        "update_mode": "hard",
+        "update_title": "به‌روزرسانی اجباری",
+        "update_message": "برای ادامه نسخه جدید را نصب کن.",
+        "bazaar_url": "https://cafebazaar.ir/app/com.encer.offlinesplitwise",
+        "myket_url": "https://myket.ir/app/com.encer.offlinesplitwise",
+        "direct_download_url": "https://splitwise.ir/files/app.apk",
+        "release_notes": ["بهبود پایداری همگام‌سازی"],
+    }
+    payload.update(overrides)
+    response = client.patch(
+        "/api/v1/admin/app-download",
+        headers={"X-Admin-Secret": "top-secret"},
+        json=payload,
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_health_defaults_without_record(client):
     response = client.get("/api/v1/health")
 
     assert response.status_code == 200
@@ -37,26 +46,8 @@ def test_health_defaults(client):
     }
 
 
-def test_health_exposes_update_policy(client):
-    health_api.settings.app_min_supported_version_code = 12
-    health_api.settings.app_latest_version_code = 18
-    health_api.settings.app_update_mode = "hard"
-    health_api.settings.app_update_store_url = "https://cafebazaar.ir/app/com.encer.offlinesplitwise"
-    health_api.settings.app_update_bazaar_store_url = None
-    health_api.settings.app_update_myket_store_url = None
-    health_api.settings.app_update_organic_store_url = None
-    health_api.settings.app_update_title = "به‌روزرسانی اجباری"
-    health_api.settings.app_update_message = "برای ادامه نسخه جدید را نصب کن."
-
-    main_settings.app_min_supported_version_code = 12
-    main_settings.app_latest_version_code = 18
-    main_settings.app_update_mode = "hard"
-    main_settings.app_update_store_url = "https://cafebazaar.ir/app/com.encer.offlinesplitwise"
-    main_settings.app_update_bazaar_store_url = None
-    main_settings.app_update_myket_store_url = None
-    main_settings.app_update_organic_store_url = None
-    main_settings.app_update_title = "به‌روزرسانی اجباری"
-    main_settings.app_update_message = "برای ادامه نسخه جدید را نصب کن."
+def test_health_exposes_update_policy_from_app_download_record(client):
+    seed_app_download(client)
 
     response = client.get("/api/v1/health")
 
@@ -64,42 +55,68 @@ def test_health_exposes_update_policy(client):
     assert response.json() == {
         "status": "ok",
         "min_supported_version_code": 12,
-        "latest_version_code": 18,
+        "latest_version_code": 42,
         "update_mode": "hard",
-        "store_url": "https://cafebazaar.ir/app/com.encer.offlinesplitwise",
+        "store_url": "https://splitwise.ir/files/app.apk",
         "update_title": "به‌روزرسانی اجباری",
         "update_message": "برای ادامه نسخه جدید را نصب کن.",
     }
 
 
-def test_health_uses_store_specific_url_from_header(client):
-    health_api.settings.app_min_supported_version_code = 12
-    health_api.settings.app_latest_version_code = 18
-    health_api.settings.app_update_mode = "soft"
-    health_api.settings.app_update_store_url = "https://example.com/fallback"
-    health_api.settings.app_update_bazaar_store_url = "https://cafebazaar.ir/app/com.encer.offlinesplitwise"
-    health_api.settings.app_update_myket_store_url = "https://myket.ir/app/com.encer.offlinesplitwise"
-    health_api.settings.app_update_organic_store_url = "https://splitwise.ir/downloads/offline-splitwise"
-    health_api.settings.app_update_title = "نسخه جدید آماده است"
-    health_api.settings.app_update_message = "نسخه جدید را از استور خودت نصب کن."
-
-    main_settings.app_min_supported_version_code = 12
-    main_settings.app_latest_version_code = 18
-    main_settings.app_update_mode = "soft"
-    main_settings.app_update_store_url = "https://example.com/fallback"
-    main_settings.app_update_bazaar_store_url = "https://cafebazaar.ir/app/com.encer.offlinesplitwise"
-    main_settings.app_update_myket_store_url = "https://myket.ir/app/com.encer.offlinesplitwise"
-    main_settings.app_update_organic_store_url = "https://splitwise.ir/downloads/offline-splitwise"
-    main_settings.app_update_title = "نسخه جدید آماده است"
-    main_settings.app_update_message = "نسخه جدید را از استور خودت نصب کن."
+def test_health_uses_store_specific_url_from_header_with_fallbacks(client):
+    seed_app_download(client, bazaar_url=None)
 
     bazaar_response = client.get("/api/v1/health", headers={"X-App-Store": "bazaar"})
     myket_response = client.get("/api/v1/health", headers={"X-App-Store": "myket"})
     organic_response = client.get("/api/v1/health", headers={"X-App-Store": "organic"})
+    invalid_response = client.get("/api/v1/health", headers={"X-App-Store": "unknown"})
 
     assert bazaar_response.status_code == 200
     assert myket_response.status_code == 200
     assert organic_response.status_code == 200
-    assert bazaar_response.json()["store_url"] == "https://cafebazaar.ir/app/com.encer.offlinesplitwise"
+    assert invalid_response.status_code == 200
+    assert bazaar_response.json()["store_url"] == "https://splitwise.ir/files/app.apk"
     assert myket_response.json()["store_url"] == "https://myket.ir/app/com.encer.offlinesplitwise"
-    assert organic_response.json()["store_url"] == "https://splitwise.ir/downloads/offline-splitwise"
+    assert organic_response.json()["store_url"] == "https://splitwise.ir/files/app.apk"
+    assert invalid_response.json()["store_url"] == "https://splitwise.ir/files/app.apk"
+
+
+def test_health_falls_back_to_first_available_link_when_direct_link_is_missing(client):
+    seed_app_download(
+        client,
+        bazaar_url="https://cafebazaar.ir/app/com.encer.offlinesplitwise",
+        myket_url=None,
+        direct_download_url=None,
+    )
+
+    response = client.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert response.json()["store_url"] == "https://cafebazaar.ir/app/com.encer.offlinesplitwise"
+
+
+def test_health_returns_null_mode_when_update_mode_is_none(client):
+    seed_app_download(
+        client,
+        update_mode="none",
+        update_title="نسخه جدید آماده است",
+        update_message="هر وقت خواستی به‌روزرسانی کن.",
+    )
+
+    response = client.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert response.json()["update_mode"] is None
+    assert response.json()["update_title"] == "نسخه جدید آماده است"
+    assert response.json()["update_message"] == "هر وقت خواستی به‌روزرسانی کن."
+
+
+def test_root_health_matches_api_health(client):
+    seed_app_download(client, update_mode="soft", min_supported_version_code=10)
+
+    root_response = client.get("/health", headers={"X-App-Store": "myket"})
+    api_response = client.get("/api/v1/health", headers={"X-App-Store": "myket"})
+
+    assert root_response.status_code == 200
+    assert api_response.status_code == 200
+    assert root_response.json() == api_response.json()

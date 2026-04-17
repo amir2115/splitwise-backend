@@ -11,9 +11,20 @@ class UserRegister(BaseModel):
     password: str
 
 
+class UserCreateByInviter(BaseModel):
+    name: str
+    username: str
+    password: str
+
+
 class UserLogin(BaseModel):
     username: str
     password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class TokenRefreshRequest(BaseModel):
@@ -24,6 +35,7 @@ class UserResponse(ORMModel):
     id: str
     name: str
     username: str
+    must_change_password: bool
     created_at: datetime
     updated_at: datetime
 

@@ -1,6 +1,7 @@
+from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -32,13 +33,23 @@ class Group(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteMix
     memberships = relationship("GroupMembership", back_populates="group", cascade="all, delete-orphan")
     members = relationship("Member", back_populates="group", cascade="all, delete-orphan")
     invites = relationship("GroupInvite", back_populates="group", cascade="all, delete-orphan")
+    group_cards = relationship("GroupCard", back_populates="group", cascade="all, delete-orphan")
     expenses = relationship("Expense", back_populates="group", cascade="all, delete-orphan")
     settlements = relationship("Settlement", back_populates="group", cascade="all, delete-orphan")
 
 
 class Member(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "members"
-    __table_args__ = (UniqueConstraint("group_id", "username", name="uq_members_group_username"),)
+    __table_args__ = (
+        Index(
+            "uq_members_group_username",
+            "group_id",
+            "username",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     group_id: Mapped[str] = mapped_column(String(36), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -73,11 +84,32 @@ class GroupInvite(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     invitee_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     member_id: Mapped[str] = mapped_column(String(36), ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True)
     status: Mapped[GroupInviteStatus] = mapped_column(SqlEnum(GroupInviteStatus, name="group_invite_status"), nullable=False)
-    responded_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     group = relationship("Group", back_populates="invites")
     inviter_user = relationship("User", foreign_keys=[inviter_user_id])
     invitee_user = relationship("User", foreign_keys=[invitee_user_id])
+    member = relationship("Member")
+
+
+class GroupCard(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteMixin, Base):
+    __tablename__ = "group_cards"
+    __table_args__ = (
+        Index(
+            "uq_group_cards_group_card_number",
+            "group_id",
+            "card_number",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    group_id: Mapped[str] = mapped_column(String(36), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    member_id: Mapped[str] = mapped_column(String(36), ForeignKey("members.id", ondelete="RESTRICT"), nullable=False, index=True)
+    card_number: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    group = relationship("Group", back_populates="group_cards")
     member = relationship("Member")
 
 
@@ -90,6 +122,29 @@ class UserConnection(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     user_low = relationship("User", foreign_keys=[user_low_id])
     user_high = relationship("User", foreign_keys=[user_high_id])
+
+
+class AppDownloadContent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "app_download_content"
+    __table_args__ = (UniqueConstraint("slug", name="uq_app_download_content_slug"),)
+
+    slug: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    subtitle: Mapped[str] = mapped_column(String(1000), nullable=False)
+    app_icon_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    version_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    version_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    release_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    file_size: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    bazaar_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    myket_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    direct_download_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    release_notes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    primary_badge_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    min_supported_version_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    update_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    update_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    update_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
 
 class Expense(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteMixin, Base):

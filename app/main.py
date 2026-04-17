@@ -1,16 +1,21 @@
 import logging
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Header, Request
+from fastapi import Depends, FastAPI, Header, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy.orm import Session
 
-from app.api.health import resolve_store_url
 from app.api.router import api_router
 from app.core.config import DEFAULT_CORS_ALLOW_ORIGINS, get_settings
-from app.core.errors import DomainError
+from app.core.errors import DomainError, NotFoundError
+from app.db.session import get_db
 from app.schemas.health import HealthResponse
+from app.services.app_download_service import APP_DOWNLOAD_APK_FILENAME
+from app.services.health_service import build_health_response
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -38,7 +43,7 @@ async def validation_error_handler(_: Request, exc: RequestValidationError) -> J
             "error": {
                 "code": "validation_error",
                 "message": "Request validation failed",
-                "details": exc.errors(),
+                "details": jsonable_encoder(exc.errors(), custom_encoder={ValueError: str}),
             }
         },
     )
@@ -47,14 +52,22 @@ async def validation_error_handler(_: Request, exc: RequestValidationError) -> J
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 
+@app.get("/files/{filename}")
+def download_uploaded_file(filename: str) -> FileResponse:
+    safe_name = Path(filename).name
+    if safe_name != filename or safe_name != APP_DOWNLOAD_APK_FILENAME:
+        raise NotFoundError("file")
+
+    file_path = Path(settings.app_download_upload_dir) / safe_name
+    if not file_path.is_file():
+        raise NotFoundError("file")
+
+    return FileResponse(path=file_path, filename=safe_name, media_type="application/vnd.android.package-archive")
+
+
 @app.get("/health", response_model=HealthResponse)
-def root_health(x_app_store: Optional[str] = Header(default=None)) -> HealthResponse:
-    return HealthResponse(
-        status="ok",
-        min_supported_version_code=settings.app_min_supported_version_code,
-        latest_version_code=settings.app_latest_version_code,
-        update_mode=None if settings.app_update_mode == "none" else settings.app_update_mode,
-        store_url=resolve_store_url(x_app_store),
-        update_title=settings.app_update_title,
-        update_message=settings.app_update_message,
-    )
+def root_health(
+    x_app_store: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> HealthResponse:
+    return build_health_response(db, x_app_store)

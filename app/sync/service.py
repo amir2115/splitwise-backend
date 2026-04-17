@@ -5,12 +5,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import DomainError
 from app.core.time import ensure_utc, utcnow
-from app.models.domain import Expense, Group, GroupMembership, Member, MembershipStatus, Settlement
+from app.models.domain import Expense, Group, GroupCard, GroupMembership, Member, MembershipStatus, Settlement
 from app.models.user import User
-from app.schemas.domain import ExpenseUpdate, GroupUpdate, MemberUpdate, SettlementUpdate
+from app.schemas.domain import ExpenseUpdate, GroupCardUpdate, GroupUpdate, MemberUpdate, SettlementUpdate
 from app.schemas.sync import InitialImportRequest, SyncPullResponse, SyncRequest, SyncResponse
 from app.services.crud_service import (
     create_expense,
+    create_group_card,
     create_group,
     create_member,
     create_settlement,
@@ -18,9 +19,11 @@ from app.services.crud_service import (
     get_group,
     get_member,
     get_settlement,
+    serialize_group_card,
     serialize_expense,
     serialize_member,
     update_expense,
+    update_group_card,
     update_group,
     update_member,
     update_settlement,
@@ -39,6 +42,18 @@ def _active_group_ids_query(user: User):
     return select(GroupMembership.group_id).where(
         GroupMembership.user_id == user.id,
         GroupMembership.status == MembershipStatus.ACTIVE,
+    )
+
+
+def _non_deleted_active_group_ids_query(user: User):
+    return (
+        select(Group.id)
+        .join(GroupMembership, GroupMembership.group_id == Group.id)
+        .where(
+            GroupMembership.user_id == user.id,
+            GroupMembership.status == MembershipStatus.ACTIVE,
+            Group.deleted_at.is_(None),
+        )
     )
 
 
@@ -91,6 +106,27 @@ def _upsert_group(db: Session, user: User, payload) -> None:
             existing.id,
             GroupUpdate(
                 name=payload.name,
+                deleted_at=getattr(payload, "deleted_at", None),
+                updated_at=getattr(payload, "updated_at", None),
+            ),
+        )
+
+
+def _upsert_group_card(db: Session, user: User, payload) -> None:
+    existing = db.get(GroupCard, payload.id) if payload.id else None
+    if not existing:
+        create_group_card(db, user, payload)
+        return
+    if not _can_access_group(db, user, existing.group_id):
+        raise DomainError(code="sync_conflict", message="Cannot import a group card for an inaccessible group")
+    if _is_newer(getattr(payload, "updated_at", None), existing.updated_at):
+        update_group_card(
+            db,
+            user,
+            existing.id,
+            GroupCardUpdate(
+                member_id=payload.member_id,
+                card_number=payload.card_number,
                 deleted_at=getattr(payload, "deleted_at", None),
                 updated_at=getattr(payload, "updated_at", None),
             ),
@@ -188,6 +224,10 @@ def _serialize_group(group: Group) -> dict:
     }
 
 
+def _serialize_group_card(group_card: GroupCard) -> dict:
+    return serialize_group_card(group_card).model_dump(mode="json")
+
+
 def _serialize_member(member: Member) -> dict:
     return serialize_member(member).model_dump(mode="json")
 
@@ -219,6 +259,8 @@ def sync_user_data(db: Session, user: User, request: SyncRequest) -> SyncRespons
     if request.push:
         for group in request.push.groups:
             _upsert_group(db, user, group)
+        for group_card in request.push.group_cards:
+            _upsert_group_card(db, user, group_card)
         for member in request.push.members:
             _upsert_member(db, user, member)
         for expense in request.push.expenses:
@@ -229,6 +271,8 @@ def sync_user_data(db: Session, user: User, request: SyncRequest) -> SyncRespons
         now = utcnow()
         for entity_id in request.push.deleted_group_ids:
             _apply_tombstone(db, Group, user, entity_id, now)
+        for entity_id in request.push.deleted_group_card_ids:
+            _apply_tombstone(db, GroupCard, user, entity_id, now)
         for entity_id in request.push.deleted_member_ids:
             _apply_tombstone(db, Member, user, entity_id, now)
         for entity_id in request.push.deleted_expense_ids:
@@ -239,32 +283,38 @@ def sync_user_data(db: Session, user: User, request: SyncRequest) -> SyncRespons
     cursor = request.last_synced_at
     server_time = utcnow()
     group_ids = _active_group_ids_query(user)
+    active_group_ids = _non_deleted_active_group_ids_query(user)
 
     group_query = select(Group).where(Group.id.in_(group_ids))
-    member_query = select(Member).where(Member.group_id.in_(group_ids))
+    group_card_query = select(GroupCard).where(GroupCard.group_id.in_(active_group_ids))
+    member_query = select(Member).where(Member.group_id.in_(active_group_ids))
     expense_query = (
         select(Expense)
-        .where(Expense.group_id.in_(group_ids))
+        .where(Expense.group_id.in_(active_group_ids))
         .options(selectinload(Expense.payers), selectinload(Expense.shares))
     )
-    settlement_query = select(Settlement).where(Settlement.group_id.in_(group_ids))
+    settlement_query = select(Settlement).where(Settlement.group_id.in_(active_group_ids))
     if cursor:
         group_query = group_query.where(Group.updated_at > cursor)
+        group_card_query = group_card_query.where(GroupCard.updated_at > cursor)
         member_query = member_query.where(Member.updated_at > cursor)
         expense_query = expense_query.where(Expense.updated_at > cursor)
         settlement_query = settlement_query.where(Settlement.updated_at > cursor)
 
     groups = list(db.scalars(group_query))
+    group_cards = list(db.scalars(group_card_query))
     members = list(db.scalars(member_query))
     expenses = list(db.scalars(expense_query).unique())
     settlements = list(db.scalars(settlement_query))
 
     changes = SyncPullResponse(
         groups=[_serialize_group(group) for group in groups if group.deleted_at is None],
+        group_cards=[_serialize_group_card(group_card) for group_card in group_cards if group_card.deleted_at is None],
         members=[_serialize_member(member) for member in members if member.deleted_at is None],
         expenses=[serialize_expense(expense).model_dump(mode="json") for expense in expenses if expense.deleted_at is None],
         settlements=[_serialize_settlement(item) for item in settlements if item.deleted_at is None],
         deleted_group_ids=[group.id for group in groups if group.deleted_at is not None],
+        deleted_group_card_ids=[group_card.id for group_card in group_cards if group_card.deleted_at is not None],
         deleted_member_ids=[member.id for member in members if member.deleted_at is not None],
         deleted_expense_ids=[expense.id for expense in expenses if expense.deleted_at is not None],
         deleted_settlement_ids=[item.id for item in settlements if item.deleted_at is not None],

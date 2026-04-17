@@ -28,6 +28,32 @@ class GroupResponse(TimestampedResponse):
     user_id: str
 
 
+class GroupCardBase(BaseModel):
+    group_id: str
+    member_id: str
+    card_number: str = Field(min_length=16, max_length=32)
+
+
+class GroupCardCreate(GroupCardBase):
+    id: str | None = None
+    updated_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+
+class GroupCardUpdate(BaseModel):
+    member_id: str | None = None
+    card_number: str | None = Field(default=None, min_length=16, max_length=32)
+    updated_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+
+class GroupCardResponse(TimestampedResponse):
+    group_id: str
+    member_id: str
+    card_number: str
+    user_id: str
+
+
 class MemberBase(BaseModel):
     group_id: str
     username: str = Field(min_length=3, max_length=64)
@@ -38,6 +64,14 @@ class MemberCreate(MemberBase):
     id: str | None = None
     updated_at: datetime | None = None
     deleted_at: datetime | None = None
+
+
+class InlineMemberCreateRequest(BaseModel):
+    group_id: str
+    name: str = Field(min_length=1, max_length=255)
+    username: str = Field(min_length=3, max_length=64)
+    password: str = Field(min_length=8, max_length=255)
+    is_archived: bool = False
 
 
 class MemberUpdate(BaseModel):
@@ -53,6 +87,12 @@ class MemberResponse(TimestampedResponse):
     membership_status: MembershipStatus
     is_archived: bool
     user_id: str | None
+
+
+class MemberSuggestionResponse(BaseModel):
+    id: str
+    username: str
+    name: str | None
 
 
 class AddMemberResponse(BaseModel):

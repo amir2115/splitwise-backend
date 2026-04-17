@@ -3,7 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Select, and_, or_, select
+from sqlalchemy import Select, and_, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import DomainError, NotFoundError
@@ -13,6 +13,7 @@ from app.models.domain import (
     ExpensePayer,
     ExpenseShare,
     Group,
+    GroupCard,
     GroupInvite,
     GroupInviteStatus,
     GroupMembership,
@@ -23,6 +24,8 @@ from app.models.domain import (
     UserConnection,
 )
 from app.models.user import User
+from app.schemas.auth import UserCreateByInviter
+from app.services.auth_service import create_user_by_inviter
 from app.schemas.domain import (
     AddMemberResponse,
     ExpenseCreate,
@@ -30,12 +33,17 @@ from app.schemas.domain import (
     ExpenseResponse,
     ExpenseUpdate,
     GroupBalanceResponse,
+    GroupCardCreate,
+    GroupCardResponse,
+    GroupCardUpdate,
     GroupCreate,
     GroupInviteResponse,
     GroupResponse,
     GroupUpdate,
+    InlineMemberCreateRequest,
     MemberBalance,
     MemberCreate,
+    MemberSuggestionResponse,
     MemberResponse,
     MemberUpdate,
     SettlementCreate,
@@ -61,6 +69,25 @@ def _normalize_username(username: str) -> str:
         raise DomainError(code="invalid_username", message="Username must be at least 3 characters long")
     if len(normalized) > 64:
         raise DomainError(code="invalid_username", message="Username must be at most 64 characters long")
+    return normalized
+
+
+def _normalize_digits(input_value: str) -> str:
+    return input_value.replace("٠", "0").replace("١", "1").replace("٢", "2").replace("٣", "3").replace("٤", "4").replace(
+        "٥", "5"
+    ).replace("٦", "6").replace("٧", "7").replace("٨", "8").replace("٩", "9").replace("۰", "0").replace("۱", "1").replace(
+        "۲", "2"
+    ).replace("۳", "3").replace("۴", "4").replace("۵", "5").replace("۶", "6").replace("۷", "7").replace("۸", "8").replace(
+        "۹", "9"
+    )
+
+
+def _normalize_card_number(card_number: str) -> str:
+    normalized = "".join(char for char in _normalize_digits(card_number) if char.isdigit())
+    if len(normalized) != 16:
+        raise DomainError(code="invalid_group_card", message="Card number must be exactly 16 digits")
+    if not normalized.isascii():
+        raise DomainError(code="invalid_group_card", message="Card number must contain ASCII digits only")
     return normalized
 
 
@@ -218,8 +245,25 @@ def serialize_member(member: Member) -> MemberResponse:
     )
 
 
+def serialize_group_card(group_card: GroupCard) -> GroupCardResponse:
+    return GroupCardResponse(
+        id=group_card.id,
+        group_id=group_card.group_id,
+        member_id=group_card.member_id,
+        card_number=group_card.card_number,
+        user_id=group_card.user_id,
+        created_at=group_card.created_at,
+        updated_at=group_card.updated_at,
+        deleted_at=group_card.deleted_at,
+    )
+
+
 def serialize_add_member_result(result: AddMemberResult) -> AddMemberResponse:
     return AddMemberResponse(outcome=result.outcome, member=serialize_member(result.member))
+
+
+def serialize_member_suggestion(user: User) -> MemberSuggestionResponse:
+    return MemberSuggestionResponse(id=user.id, username=user.username, name=user.name)
 
 
 def serialize_group_invite(invite: GroupInvite) -> GroupInviteResponse:
@@ -306,6 +350,118 @@ def soft_delete_group(db: Session, user: User, group_id: str) -> None:
     for settlement in group.settlements:
         settlement.deleted_at = now
         settlement.updated_at = now
+    for group_card in group.group_cards:
+        group_card.deleted_at = now
+        group_card.updated_at = now
+    db.commit()
+
+
+def _get_active_group_member(db: Session, group_id: str, member_id: str) -> Member:
+    member = db.scalar(
+        select(Member).where(
+            Member.id == member_id,
+            Member.group_id == group_id,
+            Member.deleted_at.is_(None),
+            Member.membership_status == MembershipStatus.ACTIVE,
+        )
+    )
+    if not member:
+        raise DomainError(code="invalid_group_card_member", message="Card member must be an active member of the group")
+    return member
+
+
+def _find_group_card_by_number(db: Session, group_id: str, card_number: str) -> GroupCard | None:
+    return db.scalar(
+        select(GroupCard).where(
+            GroupCard.group_id == group_id,
+            GroupCard.card_number == card_number,
+            GroupCard.deleted_at.is_(None),
+        )
+    )
+
+
+def list_group_cards(db: Session, user: User, *, group_id: str | None = None) -> list[GroupCard]:
+    query = (
+        select(GroupCard)
+        .where(
+            GroupCard.group_id.in_(_active_group_ids_query(user)),
+            GroupCard.deleted_at.is_(None),
+        )
+        .options(selectinload(GroupCard.member))
+    )
+    if group_id:
+        get_group(db, user, group_id)
+        query = query.where(GroupCard.group_id == group_id)
+    return list(db.scalars(query.order_by(GroupCard.created_at.desc())).unique())
+
+
+def get_group_card(db: Session, user: User, card_id: str) -> GroupCard:
+    group_card = db.scalar(
+        select(GroupCard)
+        .where(
+            GroupCard.id == card_id,
+            GroupCard.group_id.in_(_active_group_ids_query(user)),
+        )
+        .options(selectinload(GroupCard.member))
+    )
+    if not group_card:
+        raise NotFoundError("Group card")
+    return group_card
+
+
+def create_group_card(db: Session, user: User, payload: GroupCardCreate) -> GroupCard:
+    group = get_group(db, user, payload.group_id)
+    if group.deleted_at is not None:
+        raise DomainError(code="invalid_group", message="Cannot add cards to a deleted group")
+    member = _get_active_group_member(db, payload.group_id, payload.member_id)
+    normalized_card_number = _normalize_card_number(payload.card_number)
+    existing = _find_group_card_by_number(db, payload.group_id, normalized_card_number)
+    if existing:
+        raise DomainError(code="duplicate_group_card", message="Card number already exists in this group")
+
+    group_card = GroupCard(
+        id=_entity_id(payload.id),
+        user_id=user.id,
+        group_id=payload.group_id,
+        member_id=member.id,
+        card_number=normalized_card_number,
+    )
+    if payload.updated_at:
+        group_card.updated_at = payload.updated_at
+    if payload.deleted_at is not None:
+        group_card.deleted_at = payload.deleted_at
+    db.add(group_card)
+    db.commit()
+    db.refresh(group_card)
+    return get_group_card(db, user, group_card.id)
+
+
+def update_group_card(db: Session, user: User, card_id: str, payload: GroupCardUpdate) -> GroupCard:
+    group_card = get_group_card(db, user, card_id)
+    next_member_id = payload.member_id or group_card.member_id
+    _get_active_group_member(db, group_card.group_id, next_member_id)
+
+    normalized_card_number = group_card.card_number
+    if payload.card_number is not None:
+        normalized_card_number = _normalize_card_number(payload.card_number)
+        conflict = _find_group_card_by_number(db, group_card.group_id, normalized_card_number)
+        if conflict and conflict.id != group_card.id:
+            raise DomainError(code="duplicate_group_card", message="Card number already exists in this group")
+
+    group_card.member_id = next_member_id
+    group_card.card_number = normalized_card_number
+    if payload.deleted_at is not None:
+        group_card.deleted_at = payload.deleted_at
+    group_card.updated_at = payload.updated_at or payload.deleted_at or utcnow()
+    db.commit()
+    db.refresh(group_card)
+    return get_group_card(db, user, group_card.id)
+
+
+def soft_delete_group_card(db: Session, user: User, card_id: str) -> None:
+    group_card = get_group_card(db, user, card_id)
+    group_card.deleted_at = utcnow()
+    group_card.updated_at = group_card.deleted_at
     db.commit()
 
 
@@ -345,8 +501,40 @@ def _find_member_for_group(db: Session, group_id: str, username: str) -> Member 
         select(Member).where(
             Member.group_id == group_id,
             Member.username == username,
+            Member.deleted_at.is_(None),
         )
     )
+
+
+def search_member_suggestions(db: Session, user: User, *, group_id: str, query: str, limit: int = 8) -> list[User]:
+    get_group(db, user, group_id)
+
+    normalized_query = query.strip().lower()
+    if len(normalized_query) < 3:
+        return []
+
+    normalized_limit = max(1, min(limit, 20))
+    excluded_user_ids = (
+        select(Member.linked_user_id)
+        .where(
+            Member.group_id == group_id,
+            Member.deleted_at.is_(None),
+            Member.linked_user_id.is_not(None),
+        )
+    )
+    username_value = func.lower(User.username)
+    prefix_rank = case((username_value.startswith(normalized_query), 0), else_=1)
+
+    query_stmt = (
+        select(User)
+        .where(
+            username_value.contains(normalized_query),
+            ~User.id.in_(excluded_user_ids),
+        )
+        .order_by(prefix_rank, User.username.asc())
+        .limit(normalized_limit)
+    )
+    return list(db.scalars(query_stmt))
 
 
 def _pending_invite_for_member(db: Session, member_id: str) -> GroupInvite | None:
@@ -364,6 +552,7 @@ def _upsert_member_and_membership(
     payload: MemberCreate,
     *,
     preserve_updated_at: datetime | None = None,
+    force_active_connection: bool = False,
 ) -> AddMemberResult:
     group = get_group(db, inviter, payload.group_id)
     if group.deleted_at is not None:
@@ -374,38 +563,34 @@ def _upsert_member_and_membership(
         raise DomainError(code="username_not_found", message="Username does not exist")
 
     member = _find_member_for_group(db, payload.group_id, target_user.username)
-    if member and member.deleted_at is None:
+    if member:
         return AddMemberResult(outcome="already_member", member=member)
 
     membership_status = (
-        MembershipStatus.ACTIVE if _is_connected(db, inviter.id, target_user.id) else MembershipStatus.PENDING_INVITE
+        MembershipStatus.ACTIVE
+        if force_active_connection or _is_connected(db, inviter.id, target_user.id)
+        else MembershipStatus.PENDING_INVITE
     )
     outcome = "added" if membership_status == MembershipStatus.ACTIVE else "invite_sent"
 
-    if member is None:
-        member = Member(
-            id=_entity_id(payload.id),
-            user_id=inviter.id,
-            group_id=payload.group_id,
-            username=target_user.username,
-            linked_user_id=target_user.id,
-            membership_status=membership_status,
-            is_archived=payload.is_archived,
-        )
-        db.add(member)
-    else:
-        member.user_id = inviter.id
-        member.username = target_user.username
-        member.linked_user_id = target_user.id
-        member.membership_status = membership_status
-        member.is_archived = payload.is_archived
-        member.deleted_at = payload.deleted_at
+    member = Member(
+        id=_entity_id(payload.id),
+        user_id=inviter.id,
+        group_id=payload.group_id,
+        username=target_user.username,
+        linked_user_id=target_user.id,
+        membership_status=membership_status,
+        is_archived=payload.is_archived,
+    )
+    db.add(member)
     if preserve_updated_at:
         member.updated_at = preserve_updated_at
     if payload.deleted_at is not None:
         member.deleted_at = payload.deleted_at
 
     _ensure_group_membership(db, payload.group_id, target_user.id, membership_status)
+    if membership_status == MembershipStatus.ACTIVE:
+        _ensure_connection(db, inviter.id, target_user.id)
     if membership_status == MembershipStatus.PENDING_INVITE:
         existing_invite = _pending_invite_for_member(db, member.id)
         if not existing_invite:
@@ -427,6 +612,32 @@ def _upsert_member_and_membership(
 
 def create_member(db: Session, user: User, payload: MemberCreate, *, preserve_updated_at: datetime | None = None) -> AddMemberResult:
     return _upsert_member_and_membership(db, user, payload, preserve_updated_at=preserve_updated_at)
+
+
+def create_inline_member(db: Session, user: User, payload: InlineMemberCreateRequest) -> AddMemberResult:
+    try:
+        create_user_by_inviter(
+            db,
+            payload=UserCreateByInviter(
+                name=payload.name,
+                username=payload.username,
+                password=payload.password,
+            ),
+        )
+    except DomainError as exc:
+        if exc.code != "username_taken":
+            raise
+
+    return _upsert_member_and_membership(
+        db,
+        user,
+        MemberCreate(
+            group_id=payload.group_id,
+            username=payload.username,
+            is_archived=payload.is_archived,
+        ),
+        force_active_connection=True,
+    )
 
 
 def update_member(db: Session, user: User, member_id: str, payload: MemberUpdate) -> Member:
@@ -480,20 +691,40 @@ def soft_delete_member(db: Session, user: User, member_id: str) -> None:
 
 def _validate_members_in_group(db: Session, user: User, group_id: str, member_ids: list[str]) -> dict[str, Member]:
     get_group(db, user, group_id)
-    members = list(
+    requested_members = list(
         db.scalars(
             select(Member).where(
                 Member.group_id == group_id,
                 Member.id.in_(member_ids),
                 Member.deleted_at.is_(None),
-                Member.membership_status == MembershipStatus.ACTIVE,
             )
         )
     )
-    member_map = {member.id: member for member in members}
+    active_members = [member for member in requested_members if member.membership_status == MembershipStatus.ACTIVE]
+    member_map = {member.id: member for member in active_members}
     missing = sorted(set(member_ids) - set(member_map))
+    pending_members = sorted(
+        [member for member in requested_members if member.membership_status == MembershipStatus.PENDING_INVITE],
+        key=lambda member: member.username,
+    )
+    if pending_members:
+        pending_usernames = ", ".join(member.username for member in pending_members)
+        raise DomainError(
+            code="pending_member_invite_acceptance_required",
+            message=f"Members must accept the group invite before this action: {pending_usernames}",
+            details={
+                "pending_members": [
+                    {"member_id": member.id, "username": member.username}
+                    for member in pending_members
+                ]
+            },
+        )
     if missing:
-        raise DomainError(code="invalid_member", message=f"Members not found in group: {', '.join(missing)}")
+        raise DomainError(
+            code="invalid_member",
+            message="One or more members are not available in this group",
+            details={"missing_member_ids": missing},
+        )
     return member_map
 
 

@@ -1,4 +1,5 @@
 from fastapi import status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -6,7 +7,7 @@ from app.auth.security import create_access_token, create_refresh_token, decode_
 from app.core.errors import DomainError
 from app.core.time import ensure_utc, utcnow
 from app.models.user import RefreshToken, User
-from app.schemas.auth import AuthResponse, TokenPair, UserLogin, UserRegister, UserResponse
+from app.schemas.auth import AuthResponse, ChangePasswordRequest, TokenPair, UserCreateByInviter, UserLogin, UserRegister, UserResponse
 
 
 def _validate_password(password: str) -> None:
@@ -44,6 +45,26 @@ def _issue_tokens(db: Session, user: User) -> TokenPair:
     return TokenPair(access_token=access_token, refresh_token=refresh_token)
 
 
+def _build_user_response(user: User) -> UserResponse:
+    return UserResponse.model_validate(user)
+
+
+def _create_user_record(db: Session, *, name: str, username: str, password: str, must_change_password: bool) -> User:
+    user = User(
+        name=name,
+        username=username,
+        password_hash=hash_password(password),
+        must_change_password=must_change_password,
+    )
+    db.add(user)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise DomainError(code="username_taken", message="Username is already registered", status_code=status.HTTP_409_CONFLICT) from exc
+    return user
+
+
 def register_user(db: Session, payload: UserRegister) -> AuthResponse:
     name = _normalize_name(payload.name)
     username = _normalize_username(payload.username)
@@ -52,13 +73,21 @@ def register_user(db: Session, payload: UserRegister) -> AuthResponse:
     if existing:
         raise DomainError(code="username_taken", message="Username is already registered", status_code=status.HTTP_409_CONFLICT)
 
-    user = User(name=name, username=username, password_hash=hash_password(payload.password))
-    db.add(user)
-    db.flush()
+    user = _create_user_record(db, name=name, username=username, password=payload.password, must_change_password=False)
     tokens = _issue_tokens(db, user)
     db.commit()
     db.refresh(user)
-    return AuthResponse(user=UserResponse.model_validate(user), tokens=tokens)
+    return AuthResponse(user=_build_user_response(user), tokens=tokens)
+
+
+def create_user_by_inviter(db: Session, payload: UserCreateByInviter) -> UserResponse:
+    name = _normalize_name(payload.name)
+    username = _normalize_username(payload.username)
+    _validate_password(payload.password)
+    user = _create_user_record(db, name=name, username=username, password=payload.password, must_change_password=True)
+    db.commit()
+    db.refresh(user)
+    return _build_user_response(user)
 
 
 def login_user(db: Session, payload: UserLogin) -> AuthResponse:
@@ -69,7 +98,7 @@ def login_user(db: Session, payload: UserLogin) -> AuthResponse:
 
     tokens = _issue_tokens(db, user)
     db.commit()
-    return AuthResponse(user=UserResponse.model_validate(user), tokens=tokens)
+    return AuthResponse(user=_build_user_response(user), tokens=tokens)
 
 
 def refresh_tokens(db: Session, refresh_token: str) -> TokenPair:
@@ -93,3 +122,15 @@ def refresh_tokens(db: Session, refresh_token: str) -> TokenPair:
     tokens = _issue_tokens(db, user)
     db.commit()
     return tokens
+
+
+def change_password(db: Session, user: User, payload: ChangePasswordRequest) -> UserResponse:
+    if not verify_password(payload.current_password, user.password_hash):
+        raise DomainError(code="invalid_current_password", message="Current password is incorrect", status_code=status.HTTP_401_UNAUTHORIZED)
+    _validate_password(payload.new_password)
+    user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = False
+    user.updated_at = utcnow()
+    db.commit()
+    db.refresh(user)
+    return _build_user_response(user)

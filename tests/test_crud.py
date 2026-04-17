@@ -1,4 +1,4 @@
-from app.models.domain import GroupInvite, GroupInviteStatus, MembershipStatus, UserConnection
+from app.models.domain import GroupInvite, GroupInviteStatus, GroupCard, MembershipStatus, UserConnection
 
 
 def test_group_crud(client, auth_headers):
@@ -26,6 +26,114 @@ def test_member_add_unknown_username_returns_error(client, auth_headers):
     )
     assert created.status_code == 400
     assert created.json()["error"]["code"] == "username_not_found"
+
+
+def test_inline_member_create_adds_user_without_invite_and_shows_both_members(client, seeded_users):
+    owner = seeded_users["owner"]
+    group = client.post("/api/v1/groups", headers=owner["headers"], json={"name": "Trip"}).json()
+
+    created = client.post(
+        "/api/v1/members/inline-create",
+        headers=owner["headers"],
+        json={
+            "group_id": group["id"],
+            "name": "Inline User",
+            "username": "inline_user",
+            "password": "12345678",
+            "is_archived": False,
+        },
+    )
+
+    assert created.status_code == 201
+    payload = created.json()
+    assert payload["outcome"] == "added"
+    assert payload["member"]["membership_status"] == MembershipStatus.ACTIVE
+
+    login = client.post("/api/v1/auth/login", json={"username": "inline_user", "password": "12345678"})
+    assert login.status_code == 200
+    assert login.json()["user"]["must_change_password"] is True
+
+    invites = client.get("/api/v1/group-invites", headers={"Authorization": f"Bearer {login.json()['tokens']['access_token']}"})
+    assert invites.status_code == 200
+    assert invites.json() == []
+
+    members = client.get(
+        f"/api/v1/members?group_id={group['id']}",
+        headers={"Authorization": f"Bearer {login.json()['tokens']['access_token']}"},
+    )
+    assert members.status_code == 200
+    assert sorted(item["username"] for item in members.json()) == ["inline_user", "owner"]
+
+
+def test_member_suggestions_return_matching_users(client, seeded_users):
+    owner = seeded_users["owner"]
+    group = client.post("/api/v1/groups", headers=owner["headers"], json={"name": "Trip"}).json()
+
+    response = client.get(
+        f"/api/v1/members/suggestions?group_id={group['id']}&query=ali",
+        headers=owner["headers"],
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": seeded_users["alice"]["user"]["id"],
+            "username": "alice",
+            "name": "Alice",
+        }
+    ]
+
+
+def test_member_suggestions_exclude_existing_group_members(client, db_session, seeded_users):
+    owner = seeded_users["owner"]
+    alice = seeded_users["alice"]["user"]
+    low_id, high_id = sorted((owner["user"]["id"], alice["id"]))
+    db_session.add(UserConnection(user_low_id=low_id, user_high_id=high_id))
+    db_session.commit()
+
+    group = client.post("/api/v1/groups", headers=owner["headers"], json={"name": "Trip"}).json()
+    created = client.post(
+        "/api/v1/members",
+        headers=owner["headers"],
+        json={"group_id": group["id"], "username": "alice", "is_archived": False},
+    )
+    assert created.status_code == 201
+
+    response = client.get(
+        f"/api/v1/members/suggestions?group_id={group['id']}&query=ali",
+        headers=owner["headers"],
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_member_suggestions_return_empty_for_short_or_blank_query(client, seeded_users):
+    owner = seeded_users["owner"]
+    group = client.post("/api/v1/groups", headers=owner["headers"], json={"name": "Trip"}).json()
+
+    short_response = client.get(
+        f"/api/v1/members/suggestions?group_id={group['id']}&query=al",
+        headers=owner["headers"],
+    )
+    blank_response = client.get(
+        f"/api/v1/members/suggestions?group_id={group['id']}&query=%20%20%20",
+        headers=owner["headers"],
+    )
+
+    assert short_response.status_code == 200
+    assert short_response.json() == []
+    assert blank_response.status_code == 200
+    assert blank_response.json() == []
+
+
+def test_member_suggestions_require_group_access(client, seeded_group, second_account):
+    response = client.get(
+        f"/api/v1/members/suggestions?group_id={seeded_group['group']['id']}&query=ali",
+        headers=second_account["headers"],
+    )
+
+    assert response.status_code == 404
 
 
 def test_member_add_connected_user_is_immediate(client, db_session, seeded_users):
@@ -132,7 +240,58 @@ def test_rejecting_invite_removes_pending_access(client, db_session, seeded_user
     )
     assert re_added.status_code == 201
     assert re_added.json()["outcome"] == "invite_sent"
-    assert created["member"]["id"] == re_added.json()["member"]["id"]
+    assert created["member"]["id"] != re_added.json()["member"]["id"]
+
+
+def test_readding_removed_connected_member_creates_new_row_without_touching_old_expenses(client, seeded_users):
+    owner = seeded_users["owner"]
+    alice = seeded_users["alice"]
+
+    group = client.post("/api/v1/groups", headers=owner["headers"], json={"name": "Trip"}).json()
+    invited = client.post(
+        "/api/v1/members",
+        headers=owner["headers"],
+        json={"group_id": group["id"], "username": "alice", "is_archived": False},
+    ).json()
+    invite = client.get("/api/v1/group-invites", headers=alice["headers"]).json()[0]
+    accepted = client.post(f"/api/v1/group-invites/{invite['id']}/accept", headers=alice["headers"]).json()
+
+    expense = client.post(
+        "/api/v1/expenses",
+        headers=owner["headers"],
+        json={
+            "group_id": group["id"],
+            "title": "Dinner",
+            "note": None,
+            "total_amount": 100,
+            "split_type": "EXACT",
+            "payers": [{"member_id": accepted["member_id"], "amount": 100}],
+            "shares": [{"member_id": accepted["member_id"], "amount": 100}],
+        },
+    )
+    assert expense.status_code == 201
+
+    deleted = client.delete(f"/api/v1/members/{invited['member']['id']}", headers=owner["headers"])
+    assert deleted.status_code == 204
+
+    re_added = client.post(
+        "/api/v1/members",
+        headers=owner["headers"],
+        json={"group_id": group["id"], "username": "alice", "is_archived": False},
+    )
+    assert re_added.status_code == 201
+    payload = re_added.json()
+    assert payload["outcome"] == "added"
+    assert payload["member"]["membership_status"] == MembershipStatus.ACTIVE
+    assert payload["member"]["id"] != invited["member"]["id"]
+
+    groups = client.get("/api/v1/groups", headers=owner["headers"])
+    assert groups.status_code == 200
+    assert groups.json()[0]["id"] == group["id"]
+
+    expenses = client.get(f"/api/v1/expenses?group_id={group['id']}", headers=owner["headers"])
+    assert expenses.status_code == 200
+    assert expenses.json()[0]["payers"][0]["member_id"] == invited["member"]["id"]
 
 
 def test_non_member_cannot_access_shared_group_data(client, seeded_group, second_account):
@@ -208,3 +367,109 @@ def test_settlement_crud(client, seeded_group):
     deleted = client.delete(f"/api/v1/settlements/{settlement['id']}", headers=auth_headers)
     assert deleted.status_code == 204
     assert client.get(f"/api/v1/settlements?group_id={group['id']}", headers=auth_headers).json() == []
+
+
+def test_group_card_crud(client, seeded_group):
+    group = seeded_group["group"]
+    alice, bob, _ = seeded_group["members"]
+    auth_headers = seeded_group["users"]["owner"]["headers"]
+
+    created = client.post(
+        "/api/v1/group-cards",
+        headers=auth_headers,
+        json={"group_id": group["id"], "member_id": alice["id"], "card_number": "6037 9918 9975 4321"},
+    )
+    assert created.status_code == 201
+    payload = created.json()
+    assert payload["card_number"] == "6037991899754321"
+    assert payload["member_id"] == alice["id"]
+
+    listing = client.get(f"/api/v1/group-cards?group_id={group['id']}", headers=auth_headers)
+    assert listing.status_code == 200
+    assert len(listing.json()) == 1
+
+    updated = client.patch(
+        f"/api/v1/group-cards/{payload['id']}",
+        headers=auth_headers,
+        json={"member_id": bob["id"], "card_number": "۵۰۲۲۲۹۱۰۷۳۷۷۹۹۹۹"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["card_number"] == "5022291073779999"
+    assert updated.json()["member_id"] == bob["id"]
+
+    deleted = client.delete(f"/api/v1/group-cards/{payload['id']}", headers=auth_headers)
+    assert deleted.status_code == 204
+    assert client.get(f"/api/v1/group-cards?group_id={group['id']}", headers=auth_headers).json() == []
+
+
+def test_group_card_requires_active_member_and_unique_number(client, seeded_group, db_session):
+    group = seeded_group["group"]
+    alice, bob, _ = seeded_group["members"]
+    auth_headers = seeded_group["users"]["owner"]["headers"]
+    outsider_group = client.post("/api/v1/groups", headers=auth_headers, json={"name": "Other"}).json()
+    outsider_member = client.get(f"/api/v1/members?group_id={outsider_group['id']}", headers=auth_headers).json()[0]
+
+    first = client.post(
+        "/api/v1/group-cards",
+        headers=auth_headers,
+        json={"group_id": group["id"], "member_id": alice["id"], "card_number": "6037991899754321"},
+    )
+    assert first.status_code == 201
+
+    duplicate = client.post(
+        "/api/v1/group-cards",
+        headers=auth_headers,
+        json={"group_id": group["id"], "member_id": bob["id"], "card_number": "6037-9918-9975-4321"},
+    )
+    assert duplicate.status_code == 400
+    assert duplicate.json()["error"]["code"] == "duplicate_group_card"
+
+    invalid_member = client.post(
+        "/api/v1/group-cards",
+        headers=auth_headers,
+        json={"group_id": group["id"], "member_id": outsider_member["id"], "card_number": "5022291073779999"},
+    )
+    assert invalid_member.status_code == 400
+    assert invalid_member.json()["error"]["code"] == "invalid_group_card_member"
+
+    pending = client.post(
+        "/api/v1/members",
+        headers=auth_headers,
+        json={"group_id": group["id"], "username": "second", "is_archived": False},
+    ).json()["member"]
+    invalid_pending = client.post(
+        "/api/v1/group-cards",
+        headers=auth_headers,
+        json={"group_id": group["id"], "member_id": pending["id"], "card_number": "6274121200000000"},
+    )
+    assert invalid_pending.status_code == 400
+    assert invalid_pending.json()["error"]["code"] == "invalid_group_card_member"
+
+    invalid_number = client.post(
+        "/api/v1/group-cards",
+        headers=auth_headers,
+        json={"group_id": group["id"], "member_id": alice["id"], "card_number": "1234"},
+    )
+    assert invalid_number.status_code == 400
+    assert invalid_number.json()["error"]["code"] == "invalid_group_card"
+
+    stored = db_session.query(GroupCard).filter(GroupCard.group_id == group["id"]).all()
+    assert len(stored) == 1
+
+
+def test_non_member_cannot_access_group_cards(client, seeded_group, second_account):
+    created = client.post(
+        "/api/v1/group-cards",
+        headers=seeded_group["users"]["owner"]["headers"],
+        json={
+            "group_id": seeded_group["group"]["id"],
+            "member_id": seeded_group["members"][0]["id"],
+            "card_number": "6037991899754321",
+        },
+    ).json()
+
+    listing = client.get(f"/api/v1/group-cards?group_id={seeded_group['group']['id']}", headers=second_account["headers"])
+    assert listing.status_code == 404
+
+    detail = client.get(f"/api/v1/group-cards/{created['id']}", headers=second_account["headers"])
+    assert detail.status_code == 404

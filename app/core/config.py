@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     app_update_organic_store_url: Optional[str] = None
     app_update_title: Optional[str] = None
     app_update_message: Optional[str] = None
+    app_download_admin_secret: Optional[str] = None
+    app_download_upload_dir: str = "/files"
+    app_download_public_base_url: str = "https://api.splitwise.ir"
     cors_allow_credentials: bool = True
     cors_allow_methods: List[str] = ["*"]
     cors_allow_headers: List[str] = ["*"]
