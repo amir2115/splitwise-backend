@@ -9,7 +9,9 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.core.config import get_settings
 from app.models.domain import UserConnection
+from app.services.admin_service import admin_login_rate_limiter
 
 
 SQLALCHEMY_DATABASE_URL = "sqlite://"
@@ -45,10 +47,29 @@ def connect_users(db_session: Session, *user_ids: str) -> None:
 
 @pytest.fixture(autouse=True)
 def setup_database() -> Generator[None, None, None]:
+    get_settings.cache_clear()
+    admin_login_rate_limiter.reset()
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def admin_settings(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    monkeypatch.setenv("ADMIN_PANEL_USERNAME", "panel_admin")
+    monkeypatch.setenv("ADMIN_PANEL_PASSWORD", "super-secret")
+    monkeypatch.delenv("ADMIN_PANEL_PASSWORD_HASH", raising=False)
+    monkeypatch.setenv("ADMIN_PANEL_JWT_SECRET", "admin-test-secret")
+    monkeypatch.setenv("ADMIN_PANEL_RATE_LIMIT_ATTEMPTS", "5")
+    monkeypatch.setenv("ADMIN_PANEL_RATE_LIMIT_WINDOW_MINUTES", "10")
+    monkeypatch.setenv("ADMIN_PANEL_RATE_LIMIT_LOCKOUT_MINUTES", "15")
+    monkeypatch.setenv("SMS_IR_API_KEY", "test-sms-api-key")
+    monkeypatch.setenv("SMS_IR_VERIFY_TEMPLATE_ID", "100000")
+    monkeypatch.setenv("SMS_IR_VERIFY_PARAMETER_NAME", "Code")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture

@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -17,7 +21,7 @@ from app.services.crud_service import (
 router = APIRouter()
 
 
-def _parse_status(status: str | None) -> GroupInviteStatus | None:
+def _parse_status(status: Optional[str]) -> Optional[GroupInviteStatus]:
     if status is None:
         return GroupInviteStatus.PENDING
     normalized = status.strip().upper()
@@ -44,7 +48,7 @@ def _parse_status(status: str | None) -> GroupInviteStatus | None:
 
 @router.get("", response_model=list[GroupInviteResponse])
 def get_invites(
-    status: str | None = Query(default="pending"),
+    status: Optional[str] = Query(default="pending"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[GroupInviteResponse]:

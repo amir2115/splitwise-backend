@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from datetime import datetime
 import uuid
+from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -20,7 +23,7 @@ class TimestampMixin:
 
 
 class SoftDeleteMixin:
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class OwnedByUserMixin:

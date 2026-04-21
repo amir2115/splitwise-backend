@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from datetime import date, datetime
 from enum import Enum
+from typing import Optional
 
 from sqlalchemy import JSON, Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -53,7 +56,7 @@ class Member(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteMi
 
     group_id: Mapped[str] = mapped_column(String(36), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(64), nullable=False)
-    linked_user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    linked_user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     membership_status: Mapped[MembershipStatus] = mapped_column(
         SqlEnum(MembershipStatus, name="membership_status"),
         nullable=False,
@@ -84,7 +87,7 @@ class GroupInvite(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     invitee_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     member_id: Mapped[str] = mapped_column(String(36), ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True)
     status: Mapped[GroupInviteStatus] = mapped_column(SqlEnum(GroupInviteStatus, name="group_invite_status"), nullable=False)
-    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     group = relationship("Group", back_populates="invites")
     inviter_user = relationship("User", foreign_keys=[inviter_user_id])
@@ -131,20 +134,28 @@ class AppDownloadContent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     subtitle: Mapped[str] = mapped_column(String(1000), nullable=False)
-    app_icon_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
-    version_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    version_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    release_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    file_size: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    bazaar_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
-    myket_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
-    direct_download_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    app_icon_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    version_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    version_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    release_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    file_size: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    bazaar_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    myket_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    direct_download_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
     release_notes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    primary_badge_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    min_supported_version_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    update_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    update_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    update_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    primary_badge_text: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    min_supported_version_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    update_mode: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    update_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    update_message: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+
+
+class AppSetting(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "app_settings"
+    __table_args__ = (UniqueConstraint("key", name="uq_app_settings_key"),)
+
+    key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    value: Mapped[str] = mapped_column(String(4096), nullable=False)
 
 
 class Expense(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteMixin, Base):
@@ -152,7 +163,7 @@ class Expense(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteM
 
     group_id: Mapped[str] = mapped_column(String(36), ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     total_amount: Mapped[int] = mapped_column(Integer, nullable=False)
     split_type: Mapped[SplitType] = mapped_column(SqlEnum(SplitType, name="split_type"), nullable=False)
 
@@ -192,7 +203,7 @@ class Settlement(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDele
     from_member_id: Mapped[str] = mapped_column(String(36), ForeignKey("members.id", ondelete="RESTRICT"), nullable=False)
     to_member_id: Mapped[str] = mapped_column(String(36), ForeignKey("members.id", ondelete="RESTRICT"), nullable=False)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
-    note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
 
     group = relationship("Group", back_populates="settlements")
     from_member = relationship("Member", foreign_keys=[from_member_id])

@@ -1,4 +1,6 @@
 from app.models.domain import GroupInvite, GroupInviteStatus, GroupCard, MembershipStatus, UserConnection
+from app.models.user import InvitedAccountToken
+from app.core.config import get_settings
 
 
 def test_group_crud(client, auth_headers):
@@ -63,6 +65,56 @@ def test_inline_member_create_adds_user_without_invite_and_shows_both_members(cl
     )
     assert members.status_code == 200
     assert sorted(item["username"] for item in members.json()) == ["inline_user", "owner"]
+
+
+def test_inline_member_create_with_phone_sends_short_invited_account_sms_token(client, seeded_users, db_session, monkeypatch):
+    owner = seeded_users["owner"]
+    group = client.post("/api/v1/groups", headers=owner["headers"], json={"name": "Trip"}).json()
+    captured = {}
+
+    def fake_post(url, json, headers, timeout):
+        captured["url"] = url
+        captured["json"] = json
+        return type(
+            "_Response",
+            (),
+            {
+                "status_code": 200,
+                "raise_for_status": staticmethod(lambda: None),
+                "json": staticmethod(lambda: {"status": 1, "message": "موفق", "data": {"messageId": 91, "cost": 1.0}}),
+            },
+        )()
+
+    monkeypatch.setenv("SMS_IR_INVITED_ACCOUNT_TEMPLATE_ID", "975820")
+    monkeypatch.setenv("SMS_IR_INVITED_ACCOUNT_LINK_PARAMETER_NAME", "TOKEN")
+    monkeypatch.setenv("SMS_IR_INVITED_ACCOUNT_GROUP_NAME_PARAMETER_NAME", "GROUP_NAME")
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.services.sms_service.httpx.post", fake_post)
+
+    created = client.post(
+        "/api/v1/members/inline-create",
+        headers=owner["headers"],
+        json={
+            "group_id": group["id"],
+            "name": "Inline User",
+            "username": "inline_user_phone",
+            "password": "12345678",
+            "phone_number": "09120000000",
+            "is_archived": False,
+        },
+    )
+
+    assert created.status_code == 201
+    assert captured["url"] == "https://api.sms.ir/v1/send/verify"
+    assert captured["json"]["templateId"] == 975820
+    assert captured["json"]["parameters"][0] == {"name": "GROUP_NAME", "value": "Trip"}
+    token_parameter = captured["json"]["parameters"][1]
+    assert token_parameter["name"] == "TOKEN"
+    assert len(token_parameter["value"]) <= 25
+
+    invite_token_record = db_session.query(InvitedAccountToken).one()
+    assert invite_token_record.token_jti == token_parameter["value"]
+    get_settings.cache_clear()
 
 
 def test_member_suggestions_return_matching_users(client, seeded_users):

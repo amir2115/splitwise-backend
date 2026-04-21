@@ -1,4 +1,5 @@
 from app.models.domain import (
+    AppSetting,
     AppDownloadContent,
     Expense,
     ExpensePayer,
@@ -11,9 +12,10 @@ from app.models.domain import (
     Settlement,
     UserConnection,
 )
-from app.models.user import RefreshToken, User
+from app.models.user import InvitedAccountToken, PasswordResetCode, PendingRegistration, PhoneVerificationCode, RefreshToken, User
 
 __all__ = [
+    "AppSetting",
     "AppDownloadContent",
     "Expense",
     "ExpensePayer",
@@ -22,7 +24,11 @@ __all__ = [
     "GroupCard",
     "GroupInvite",
     "GroupMembership",
+    "InvitedAccountToken",
     "Member",
+    "PendingRegistration",
+    "PasswordResetCode",
+    "PhoneVerificationCode",
     "RefreshToken",
     "Settlement",
     "User",

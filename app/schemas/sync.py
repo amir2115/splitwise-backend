@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -6,7 +7,7 @@ from app.schemas.domain import ExpenseCreate, GroupCardCreate, GroupCreate, Memb
 
 
 class SyncCursor(BaseModel):
-    last_synced_at: datetime | None = None
+    last_synced_at: Optional[datetime] = None
 
 
 class SyncPayload(BaseModel):
@@ -25,8 +26,8 @@ class SyncPayload(BaseModel):
 
 class SyncRequest(BaseModel):
     device_id: str = Field(min_length=1, max_length=255)
-    last_synced_at: datetime | None = None
-    push: SyncPayload | None = None
+    last_synced_at: Optional[datetime] = None
+    push: Optional[SyncPayload] = None
 
 
 class SyncPullResponse(BaseModel):

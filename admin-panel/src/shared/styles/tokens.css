@@ -1,0 +1,77 @@
+@font-face {
+  font-family: 'IranYekan';
+  src: url('../../assets/fonts/iran_yekan_regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IranYekan';
+  src: url('../../assets/fonts/iran_yekan_medium.ttf') format('truetype');
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IranYekan';
+  src: url('../../assets/fonts/iran_yekan_bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IranYekan';
+  src: url('../../assets/fonts/iran_yekan_extra_bold.ttf') format('truetype');
+  font-weight: 800;
+  font-display: swap;
+}
+
+:root {
+  --font-app: 'IranYekan', sans-serif;
+  --color-bg: #08141f;
+  --color-bg-accent: #0f2230;
+  --color-surface: rgba(14, 26, 37, 0.82);
+  --color-surface-strong: rgba(11, 21, 31, 0.94);
+  --color-surface-soft: rgba(28, 45, 60, 0.74);
+  --color-border: rgba(143, 197, 255, 0.15);
+  --color-border-strong: rgba(143, 197, 255, 0.28);
+  --color-text: #f4f7fb;
+  --color-text-soft: #aac1d6;
+  --color-primary: #5cc8ff;
+  --color-primary-strong: #1986d6;
+  --color-success: #41d3a2;
+  --color-warning: #ffb86b;
+  --color-danger: #ff7b7b;
+  --shadow-xl: 0 28px 80px rgba(0, 0, 0, 0.42);
+  --radius-xl: 32px;
+  --radius-lg: 24px;
+  --radius-md: 18px;
+  --radius-sm: 14px;
+  --page-width: 1280px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-app);
+  color: var(--color-text);
+  background:
+    radial-gradient(circle at top right, rgba(92, 200, 255, 0.18), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(65, 211, 162, 0.12), transparent 26%),
+    linear-gradient(160deg, #071019 0%, #0b1722 45%, #102536 100%);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}

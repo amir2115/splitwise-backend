@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, File, Header, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -13,7 +15,7 @@ router = APIRouter()
 settings = get_settings()
 
 
-def require_app_download_admin(x_admin_secret: str | None = Header(default=None, alias="X-Admin-Secret")) -> None:
+def require_app_download_admin(x_admin_secret: Optional[str] = Header(default=None, alias="X-Admin-Secret")) -> None:
     if not settings.app_download_admin_secret:
         raise DomainError(
             code="app_download_admin_secret_not_configured",

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -12,15 +12,15 @@ class GroupBase(BaseModel):
 
 
 class GroupCreate(GroupBase):
-    id: str | None = None
-    updated_at: datetime | None = None
-    deleted_at: datetime | None = None
+    id: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
 
 
 class GroupUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
-    updated_at: datetime | None = None
-    deleted_at: datetime | None = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
 
 
 class GroupResponse(TimestampedResponse):
@@ -35,16 +35,16 @@ class GroupCardBase(BaseModel):
 
 
 class GroupCardCreate(GroupCardBase):
-    id: str | None = None
-    updated_at: datetime | None = None
-    deleted_at: datetime | None = None
+    id: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
 
 
 class GroupCardUpdate(BaseModel):
-    member_id: str | None = None
-    card_number: str | None = Field(default=None, min_length=16, max_length=32)
-    updated_at: datetime | None = None
-    deleted_at: datetime | None = None
+    member_id: Optional[str] = None
+    card_number: Optional[str] = Field(default=None, min_length=16, max_length=32)
+    updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
 
 
 class GroupCardResponse(TimestampedResponse):
@@ -61,9 +61,9 @@ class MemberBase(BaseModel):
 
 
 class MemberCreate(MemberBase):
-    id: str | None = None
-    updated_at: datetime | None = None
-    deleted_at: datetime | None = None
+    id: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
 
 
 class InlineMemberCreateRequest(BaseModel):
@@ -71,14 +71,15 @@ class InlineMemberCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     username: str = Field(min_length=3, max_length=64)
     password: str = Field(min_length=8, max_length=255)
+    phone_number: Optional[str] = None
     is_archived: bool = False
 
 
 class MemberUpdate(BaseModel):
-    username: str | None = Field(default=None, min_length=3, max_length=64)
-    is_archived: bool | None = None
-    updated_at: datetime | None = None
-    deleted_at: datetime | None = None
+    username: Optional[str] = Field(default=None, min_length=3, max_length=64)
+    is_archived: Optional[bool] = None
+    updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
 
 
 class MemberResponse(TimestampedResponse):
@@ -86,13 +87,13 @@ class MemberResponse(TimestampedResponse):
     username: str
     membership_status: MembershipStatus
     is_archived: bool
-    user_id: str | None
+    user_id: Optional[str]
 
 
 class MemberSuggestionResponse(BaseModel):
     id: str
     username: str
-    name: str | None
+    name: Optional[str]
 
 
 class AddMemberResponse(BaseModel):
@@ -110,7 +111,7 @@ class GroupInviteResponse(TimestampedResponse):
     invitee_user_id: str
     invitee_username: str
     status: GroupInviteStatus
-    responded_at: datetime | None
+    responded_at: Optional[datetime]
 
 
 class ExpenseParticipantAmount(BaseModel):
@@ -121,7 +122,7 @@ class ExpenseParticipantAmount(BaseModel):
 class ExpenseBase(BaseModel):
     group_id: str
     title: str = Field(min_length=1, max_length=255)
-    note: str | None = Field(default=None, max_length=1000)
+    note: Optional[str] = Field(default=None, max_length=1000)
     total_amount: int = Field(gt=0)
     split_type: SplitType
     payers: list[ExpenseParticipantAmount]
@@ -137,25 +138,25 @@ class ExpenseBase(BaseModel):
 
 
 class ExpenseCreate(ExpenseBase):
-    id: str | None = None
-    updated_at: datetime | None = None
+    id: Optional[str] = None
+    updated_at: Optional[datetime] = None
 
 
 class ExpenseUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
-    note: str | None = Field(default=None, max_length=1000)
-    total_amount: int | None = Field(default=None, gt=0)
-    split_type: SplitType | None = None
-    payers: list[ExpenseParticipantAmount] | None = None
-    shares: list[ExpenseParticipantAmount] | None = None
-    deleted_at: datetime | None = None
-    updated_at: datetime | None = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    note: Optional[str] = Field(default=None, max_length=1000)
+    total_amount: Optional[int] = Field(default=None, gt=0)
+    split_type: Optional[SplitType] = None
+    payers: Optional[list[ExpenseParticipantAmount]] = None
+    shares: Optional[list[ExpenseParticipantAmount]] = None
+    deleted_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class ExpenseResponse(TimestampedResponse):
     group_id: str
     title: str
-    note: str | None
+    note: Optional[str]
     total_amount: int
     split_type: SplitType
     user_id: str
@@ -168,21 +169,21 @@ class SettlementBase(BaseModel):
     from_member_id: str
     to_member_id: str
     amount: int = Field(gt=0)
-    note: str | None = Field(default=None, max_length=1000)
+    note: Optional[str] = Field(default=None, max_length=1000)
 
 
 class SettlementCreate(SettlementBase):
-    id: str | None = None
-    updated_at: datetime | None = None
+    id: Optional[str] = None
+    updated_at: Optional[datetime] = None
 
 
 class SettlementUpdate(BaseModel):
-    from_member_id: str | None = None
-    to_member_id: str | None = None
-    amount: int | None = Field(default=None, gt=0)
-    note: str | None = Field(default=None, max_length=1000)
-    deleted_at: datetime | None = None
-    updated_at: datetime | None = None
+    from_member_id: Optional[str] = None
+    to_member_id: Optional[str] = None
+    amount: Optional[int] = Field(default=None, gt=0)
+    note: Optional[str] = Field(default=None, max_length=1000)
+    deleted_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class SettlementResponse(TimestampedResponse):
@@ -190,7 +191,7 @@ class SettlementResponse(TimestampedResponse):
     from_member_id: str
     to_member_id: str
     amount: int
-    note: str | None
+    note: Optional[str]
     user_id: str
 
 

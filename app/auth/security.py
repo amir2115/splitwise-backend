@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -33,6 +35,20 @@ def _create_token(subject: str, expires_delta: timedelta, token_type: str, jti: 
 
 def create_access_token(subject: str) -> str:
     return _create_token(subject, timedelta(minutes=settings.jwt_access_token_expire_minutes), "access")
+
+
+def create_password_reset_token(subject: str, *, minutes: int = 15, jti: str | None = None) -> tuple[str, str, datetime]:
+    token_jti = jti or str(uuid.uuid4())
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    token = _create_token(subject, timedelta(minutes=minutes), "password_reset", token_jti)
+    return token, token_jti, expires_at
+
+
+def create_invited_account_token(subject: str, *, minutes: int = 60 * 24 * 7, jti: str | None = None) -> tuple[str, str, datetime]:
+    token_jti = jti or str(uuid.uuid4())
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    token = _create_token(subject, timedelta(minutes=minutes), "invited_account", token_jti)
+    return token, token_jti, expires_at
 
 
 def create_refresh_token(subject: str, *, jti: str | None = None) -> tuple[str, str, datetime]:

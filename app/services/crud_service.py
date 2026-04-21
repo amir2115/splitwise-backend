@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
@@ -25,7 +27,7 @@ from app.models.domain import (
 )
 from app.models.user import User
 from app.schemas.auth import UserCreateByInviter
-from app.services.auth_service import create_user_by_inviter
+from app.services.auth_service import create_user_by_inviter, send_invited_account_completion_sms
 from app.schemas.domain import (
     AddMemberResponse,
     ExpenseCreate,
@@ -615,20 +617,22 @@ def create_member(db: Session, user: User, payload: MemberCreate, *, preserve_up
 
 
 def create_inline_member(db: Session, user: User, payload: InlineMemberCreateRequest) -> AddMemberResult:
+    created_user = None
     try:
-        create_user_by_inviter(
+        created_user = create_user_by_inviter(
             db,
             payload=UserCreateByInviter(
                 name=payload.name,
                 username=payload.username,
                 password=payload.password,
+                phone_number=payload.phone_number,
             ),
         )
     except DomainError as exc:
         if exc.code != "username_taken":
             raise
 
-    return _upsert_member_and_membership(
+    result = _upsert_member_and_membership(
         db,
         user,
         MemberCreate(
@@ -638,6 +642,12 @@ def create_inline_member(db: Session, user: User, payload: InlineMemberCreateReq
         ),
         force_active_connection=True,
     )
+    if created_user and payload.phone_number:
+        group = get_group(db, user, payload.group_id)
+        created_user_record = db.get(User, created_user.id)
+        if created_user_record:
+            send_invited_account_completion_sms(db, user=created_user_record, group_name=group.name)
+    return result
 
 
 def update_member(db: Session, user: User, member_id: str, payload: MemberUpdate) -> Member:

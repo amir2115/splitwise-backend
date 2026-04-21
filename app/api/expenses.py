@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
@@ -12,7 +16,7 @@ router = APIRouter()
 
 @router.get("", response_model=list[ExpenseResponse])
 def get_expenses(
-    group_id: str | None = Query(default=None),
+    group_id: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[ExpenseResponse]:
