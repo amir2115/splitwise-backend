@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       admin_panel: ${{ steps.filter.outputs.admin_panel }}
@@ -42,7 +42,7 @@ jobs:
   test-backend:
     needs: changes
     if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.deploy == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,7 +55,7 @@ jobs:
   test-admin-panel:
     needs: changes
     if: needs.changes.outputs.admin_panel == 'true' || needs.changes.outputs.deploy == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     defaults:
       run:
         working-directory: admin-panel
@@ -79,7 +79,7 @@ jobs:
       (needs.changes.outputs.backend == 'true' || needs.changes.outputs.admin_panel == 'true' || needs.changes.outputs.deploy == 'true') &&
       (needs.test-backend.result == 'success' || needs.test-backend.result == 'skipped') &&
       (needs.test-admin-panel.result == 'success' || needs.test-admin-panel.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Configure SSH
         run: |
