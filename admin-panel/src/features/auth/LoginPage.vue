@@ -16,7 +16,12 @@ async function submit() {
     await adminAuthStore.login(username.value, password.value)
     await router.replace('/users')
   } catch (error) {
-    errorMessage.value = error instanceof ApiError ? error.message : 'ورود به پنل انجام نشد.'
+    if (error instanceof ApiError) {
+      const payload = error.payload as { error?: { code?: string } }
+      errorMessage.value = payload?.error?.code === 'invalid_credentials' ? 'نام کاربری یا رمز عبور درست نیست.' : error.message
+      return
+    }
+    errorMessage.value = 'ورود به پنل انجام نشد.'
   }
 }
 </script>

@@ -8,9 +8,12 @@ from app.core.config import get_settings
 from app.models.domain import AppSetting
 
 RUNTIME_SETTING_KEYS = {
+    "phone_verification_required",
     "sms_ir_api_key",
     "sms_ir_verify_template_id",
+    "sms_ir_verify_template_id_android",
     "sms_ir_verify_parameter_name",
+    "sms_otp_bypass_enabled",
     "sms_ir_invited_account_template_id",
     "sms_ir_invited_account_link_parameter_name",
     "sms_ir_invited_account_group_name_parameter_name",

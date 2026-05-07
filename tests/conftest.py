@@ -66,6 +66,7 @@ def admin_settings(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, Non
     monkeypatch.setenv("ADMIN_PANEL_RATE_LIMIT_LOCKOUT_MINUTES", "15")
     monkeypatch.setenv("SMS_IR_API_KEY", "test-sms-api-key")
     monkeypatch.setenv("SMS_IR_VERIFY_TEMPLATE_ID", "100000")
+    monkeypatch.setenv("SMS_IR_VERIFY_TEMPLATE_ID_ANDROID", "200000")
     monkeypatch.setenv("SMS_IR_VERIFY_PARAMETER_NAME", "Code")
     get_settings.cache_clear()
     yield

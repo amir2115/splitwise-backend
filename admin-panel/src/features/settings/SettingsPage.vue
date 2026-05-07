@@ -14,9 +14,12 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const settings = ref<AdminRuntimeSettingsResponse | null>(null)
 const form = ref<AdminRuntimeSettingsUpdateRequest>({
+  phone_verification_required: false,
   sms_ir_api_key: '',
   sms_ir_verify_template_id: '',
+  sms_ir_verify_template_id_android: '',
   sms_ir_verify_parameter_name: '',
+  sms_otp_bypass_enabled: false,
   sms_ir_invited_account_template_id: '',
   sms_ir_invited_account_link_parameter_name: '',
   sms_ir_invited_account_group_name_parameter_name: '',
@@ -34,9 +37,12 @@ async function fetchSettings() {
     )
     settings.value = response
     form.value = {
+      phone_verification_required: response.phone_verification_required,
       sms_ir_api_key: '',
       sms_ir_verify_template_id: response.sms_ir_verify_template_id ?? '',
+      sms_ir_verify_template_id_android: response.sms_ir_verify_template_id_android ?? '',
       sms_ir_verify_parameter_name: response.sms_ir_verify_parameter_name ?? '',
+      sms_otp_bypass_enabled: response.sms_otp_bypass_enabled,
       sms_ir_invited_account_template_id: response.sms_ir_invited_account_template_id ?? '',
       sms_ir_invited_account_link_parameter_name: response.sms_ir_invited_account_link_parameter_name ?? '',
       sms_ir_invited_account_group_name_parameter_name: response.sms_ir_invited_account_group_name_parameter_name ?? '',
@@ -96,9 +102,9 @@ function logout() {
   <main class="dashboard-shell">
     <header class="dashboard-hero">
       <div>
-        <span class="eyebrow">تنظیمات پیامک و دعوت</span>
+        <span class="eyebrow">تنظیمات پیامک، دعوت و تایید شماره</span>
         <h1>تنظیمات runtime</h1>
-        <p>کلید API، template idها، نام پارامترهای پیامک و آدرس وب‌اپ را از اینجا مدیریت کن.</p>
+        <p>کلید API، template idها، فلگ نیاز به تایید شماره، bypass کد OTP و آدرس وب‌اپ را از اینجا مدیریت کن.</p>
       </div>
 
       <div class="dashboard-hero__actions">
@@ -119,6 +125,15 @@ function logout() {
 
     <section v-else class="filters-card">
       <form class="page-form-stack" @submit.prevent="saveSettings">
+        <label class="field field--checkbox">
+          <span>PHONE_VERIFICATION_REQUIRED</span>
+          <input v-model="form.phone_verification_required" type="checkbox" />
+          <small class="field-hint">
+            اگر روشن باشد، کاربر لاگین‌شده‌ای که شماره تلفن ندارد یا شماره‌اش تایید نشده، بعد از ورود به اپ باید مودال
+            تایید شماره تلفن را ببیند.
+          </small>
+        </label>
+
         <div class="field">
           <span>SMS_IR_API_KEY</span>
           <input v-model.trim="form.sms_ir_api_key" type="text" placeholder="برای حفظ مقدار فعلی خالی بگذار" />
@@ -131,9 +146,24 @@ function logout() {
         </div>
 
         <div class="field">
+          <span>SMS_IR_VERIFY_TEMPLATE_ID_ANDROID</span>
+          <input v-model.trim="form.sms_ir_verify_template_id_android" type="text" />
+        </div>
+
+        <div class="field">
           <span>SMS_IR_VERIFY_PARAMETER_NAME</span>
           <input v-model.trim="form.sms_ir_verify_parameter_name" type="text" placeholder="OTP" />
         </div>
+
+        <label class="field field--checkbox">
+          <span>SMS_OTP_BYPASS_ENABLED</span>
+          <input v-model="form.sms_otp_bypass_enabled" type="checkbox" />
+          <small class="field-hint">
+            اگر روشن باشد، برای ثبت‌نام، تایید شماره و فراموشی رمز هیچ درخواستی به sms.ir ارسال نمی‌شود و فقط کد ثابت
+            <strong>12345</strong>
+            معتبر خواهد بود.
+          </small>
+        </label>
 
         <div class="field">
           <span>SMS_IR_INVITED_ACCOUNT_TEMPLATE_ID</span>

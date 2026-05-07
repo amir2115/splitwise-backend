@@ -1,6 +1,10 @@
 from app.models.domain import (
     AppSetting,
     AppDownloadContent,
+    Article,
+    ArticleAuthor,
+    ArticleCategory,
+    ArticleRedirect,
     Expense,
     ExpensePayer,
     ExpenseShare,
@@ -17,6 +21,10 @@ from app.models.user import InvitedAccountToken, PasswordResetCode, PendingRegis
 __all__ = [
     "AppSetting",
     "AppDownloadContent",
+    "Article",
+    "ArticleAuthor",
+    "ArticleCategory",
+    "ArticleRedirect",
     "Expense",
     "ExpensePayer",
     "ExpenseShare",

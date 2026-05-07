@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, Depends, File, Path, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.admin.dependencies import get_current_admin_username
@@ -16,7 +16,18 @@ from app.schemas.admin import (
     AdminUserUpdateRequest,
     AdminUsersQuery,
 )
+from app.schemas.articles import (
+    ArticleAuthorResponse,
+    ArticleDetailResponse,
+    ArticleImageUploadResponse,
+    ArticlePatchRequest,
+    ArticleWriteRequest,
+    AuthorWriteRequest,
+    CategoryWriteRequest,
+    ArticleCategoryResponse,
+)
 from app.services.admin_service import authenticate_admin, build_admin_session, delete_user, get_runtime_settings, list_users, update_runtime_settings, update_user
+from app.services.articles_service import archive_article, create_article, create_author, create_category, publish_article, update_article, upload_article_hero_image
 
 router = APIRouter()
 
@@ -36,7 +47,16 @@ def admin_me(admin_username: str = Depends(get_current_admin_username)) -> Admin
 def admin_list_users(
     search: Optional[str] = Query(default=None),
     must_change_password: Optional[bool] = Query(default=None),
-    sort_by: Literal["created_at", "updated_at", "name", "username", "groups_count", "active_refresh_tokens_count"] = Query(default="created_at"),
+    sort_by: Literal[
+        "created_at",
+        "updated_at",
+        "name",
+        "username",
+        "groups_count",
+        "active_refresh_tokens_count",
+        "has_phone_number",
+        "is_phone_verified",
+    ] = Query(default="created_at"),
     sort_order: Literal["asc", "desc"] = Query(default="desc"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -88,3 +108,69 @@ def admin_patch_runtime_settings(
     db: Session = Depends(get_db),
 ) -> AdminRuntimeSettingsResponse:
     return update_runtime_settings(db, payload)
+
+
+@router.post("/categories", response_model=ArticleCategoryResponse, status_code=201)
+def admin_create_article_category(
+    payload: CategoryWriteRequest,
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> ArticleCategoryResponse:
+    return create_category(db, payload)
+
+
+@router.post("/authors", response_model=ArticleAuthorResponse, status_code=201)
+def admin_create_article_author(
+    payload: AuthorWriteRequest,
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> ArticleAuthorResponse:
+    return create_author(db, payload)
+
+
+@router.post("/articles", response_model=ArticleDetailResponse, status_code=201)
+def admin_create_article(
+    payload: ArticleWriteRequest,
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> ArticleDetailResponse:
+    return create_article(db, payload)
+
+
+@router.patch("/articles/{article_id}", response_model=ArticleDetailResponse)
+def admin_update_article(
+    payload: ArticlePatchRequest,
+    article_id: str = Path(...),
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> ArticleDetailResponse:
+    return update_article(db, article_id, payload)
+
+
+@router.post("/articles/{article_id}/publish", response_model=ArticleDetailResponse)
+def admin_publish_article(
+    article_id: str = Path(...),
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> ArticleDetailResponse:
+    return publish_article(db, article_id)
+
+
+@router.post("/articles/{article_id}/hero-image", response_model=ArticleImageUploadResponse)
+async def admin_upload_article_hero_image(
+    article_id: str = Path(...),
+    file: UploadFile = File(...),
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> ArticleImageUploadResponse:
+    content = await file.read()
+    return upload_article_hero_image(db, article_id, filename=file.filename, content=content)
+
+
+@router.delete("/articles/{article_id}", status_code=204)
+def admin_archive_article(
+    article_id: str = Path(...),
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> None:
+    archive_article(db, article_id)

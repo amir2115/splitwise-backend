@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -25,6 +25,85 @@ class GroupInviteStatus(str, Enum):
     PENDING = "PENDING"
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
+
+
+class ArticleStatus(str, Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
+class ArticleCategory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "article_categories"
+    __table_args__ = (UniqueConstraint("slug", name="uq_article_categories_slug"),)
+
+    slug: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+    articles = relationship("Article", back_populates="category")
+
+
+class ArticleAuthor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "article_authors"
+    __table_args__ = (UniqueConstraint("slug", name="uq_article_authors_slug"),)
+
+    slug: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    role: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    articles = relationship("Article", back_populates="author")
+
+
+class Article(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "articles"
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_articles_slug"),
+        Index("idx_articles_status_pub", "status", "published_at"),
+    )
+
+    slug: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(220), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    tldr: Mapped[str] = mapped_column(Text, nullable=False)
+    hero_icon: Mapped[str] = mapped_column(String(16), nullable=False, default="✦", server_default="✦")
+    hero_image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    reading_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=5, server_default="5")
+
+    category_id: Mapped[str] = mapped_column(String(36), ForeignKey("article_categories.id", ondelete="RESTRICT"), nullable=False, index=True)
+    author_id: Mapped[str] = mapped_column(String(36), ForeignKey("article_authors.id", ondelete="RESTRICT"), nullable=False, index=True)
+
+    body: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    toc: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    audience: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    related_slugs: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+
+    meta_title: Mapped[Optional[str]] = mapped_column(String(220), nullable=True)
+    meta_description: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    og_image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    canonical_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    status: Mapped[ArticleStatus] = mapped_column(
+        SqlEnum(ArticleStatus, values_callable=lambda enum: [item.value for item in enum], name="article_status"),
+        nullable=False,
+        default=ArticleStatus.DRAFT,
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    category = relationship("ArticleCategory", back_populates="articles")
+    author = relationship("ArticleAuthor", back_populates="articles")
+
+
+class ArticleRedirect(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "article_redirects"
+    __table_args__ = (UniqueConstraint("from_slug", name="uq_article_redirects_from_slug"),)
+
+    from_slug: Mapped[str] = mapped_column(String(120), nullable=False)
+    to_slug: Mapped[str] = mapped_column(String(120), ForeignKey("articles.slug", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
 
 
 class Group(UUIDPrimaryKeyMixin, OwnedByUserMixin, TimestampMixin, SoftDeleteMixin, Base):

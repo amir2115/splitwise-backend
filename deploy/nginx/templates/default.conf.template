@@ -1,0 +1,94 @@
+server {
+    listen 80;
+    server_name splitwise.ir www.splitwise.ir api.splitwise.ir panel.splitwise.ir pwa.splitwise.ir webmail.splitwise.ir;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name splitwise.ir www.splitwise.ir;
+
+    ssl_certificate /etc/nginx/certs/splitwise.ir/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/splitwise.ir/privkey.pem;
+
+    location / {
+        proxy_pass http://landing:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name api.splitwise.ir;
+
+    client_max_body_size 100m;
+    ssl_certificate /etc/nginx/certs/api.splitwise.ir/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/api.splitwise.ir/privkey.pem;
+
+    location / {
+        proxy_pass http://backend:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name panel.splitwise.ir;
+
+    ssl_certificate /etc/nginx/certs/panel.splitwise.ir/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/panel.splitwise.ir/privkey.pem;
+
+    location / {
+        proxy_pass http://admin-panel:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name pwa.splitwise.ir;
+
+    ssl_certificate /etc/nginx/certs/pwa.splitwise.ir/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/pwa.splitwise.ir/privkey.pem;
+
+    location / {
+        proxy_pass http://web:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name webmail.splitwise.ir;
+
+    ssl_certificate /etc/nginx/certs/webmail.splitwise.ir/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/webmail.splitwise.ir/privkey.pem;
+
+    location / {
+        proxy_pass http://roundcube:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 from pathlib import Path
 from typing import Optional
 
@@ -64,6 +65,20 @@ def download_uploaded_file(filename: str) -> FileResponse:
         raise NotFoundError("file")
 
     return FileResponse(path=file_path, filename=safe_name, media_type="application/vnd.android.package-archive")
+
+
+@app.get("/files/articles/{filename}")
+def download_article_image(filename: str) -> FileResponse:
+    safe_name = Path(filename).name
+    if safe_name != filename:
+        raise NotFoundError("file")
+
+    file_path = Path(settings.article_image_upload_dir) / safe_name
+    if not file_path.is_file():
+        raise NotFoundError("file")
+
+    media_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+    return FileResponse(path=file_path, filename=safe_name, media_type=media_type)
 
 
 @app.get("/health", response_model=HealthResponse)

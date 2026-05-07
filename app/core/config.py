@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     app_download_admin_secret: Optional[str] = None
     app_download_upload_dir: str = "/files"
     app_download_public_base_url: str = "https://api.splitwise.ir"
+    article_image_upload_dir: str = "/files/articles"
+    article_image_public_base_url: str = "https://api.splitwise.ir"
+    phone_verification_required: bool = False
     admin_panel_username: Optional[str] = None
     admin_panel_password: Optional[str] = None
     admin_panel_password_hash: Optional[str] = None
@@ -53,7 +56,9 @@ class Settings(BaseSettings):
     admin_panel_rate_limit_lockout_minutes: int = 15
     sms_ir_api_key: Optional[str] = None
     sms_ir_verify_template_id: Optional[int] = None
+    sms_ir_verify_template_id_android: Optional[int] = None
     sms_ir_verify_parameter_name: str = "OTP"
+    sms_otp_bypass_enabled: Optional[bool] = None
     sms_ir_invited_account_template_id: Optional[int] = None
     sms_ir_invited_account_link_parameter_name: str = "TOKEN"
     sms_ir_invited_account_group_name_parameter_name: str = "GROUP_NAME"

@@ -35,6 +35,10 @@ def ensure_runtime_schema_compatibility() -> None:
             default_literal = "FALSE" if dialect_name == "postgresql" else "0"
             for table_name in (
                 "app_download_content",
+                "article_categories",
+                "article_authors",
+                "articles",
+                "article_redirects",
                 "refresh_tokens",
                 "phone_verification_codes",
                 "password_reset_codes",

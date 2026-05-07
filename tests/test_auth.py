@@ -3,6 +3,7 @@ from datetime import timedelta
 from app.auth.security import hash_password, verify_password
 from app.core.config import get_settings
 from app.core.time import utcnow
+from app.models.domain import AppSetting
 from app.models.user import InvitedAccountToken, PasswordResetCode, PendingRegistration, PhoneVerificationCode, User
 
 
@@ -17,6 +18,11 @@ class _FakeSmsResponse:
 
     def json(self) -> dict:
         return self._payload
+
+
+def _enable_sms_otp_bypass(db_session) -> None:
+    db_session.add(AppSetting(key="sms_otp_bypass_enabled", value="true"))
+    db_session.commit()
 
 
 def test_register_login_refresh_and_me(client):
@@ -41,6 +47,18 @@ def test_register_login_refresh_and_me(client):
     assert me.json()["username"] == "amir_test"
     assert me.json()["phone_number"] is None
     assert me.json()["must_change_password"] is False
+
+
+def test_login_with_wrong_password_returns_invalid_credentials(client):
+    client.post(
+        "/api/v1/auth/register",
+        json={"name": "Wrong Password User", "username": "wrong_password_user", "password": "password123"},
+    )
+
+    login = client.post("/api/v1/auth/login", json={"username": "wrong_password_user", "password": "bad-password"})
+
+    assert login.status_code == 401
+    assert login.json()["error"]["code"] == "invalid_credentials"
 
 
 def test_register_request_and_verify_creates_verified_user_and_tokens(client, db_session, monkeypatch):
@@ -95,6 +113,71 @@ def test_register_request_and_verify_creates_verified_user_and_tokens(client, db
 
     db_session.refresh(pending_record)
     assert pending_record.consumed_at is not None
+
+
+def test_register_request_uses_android_sms_template_when_android_header_is_present(client, monkeypatch):
+    captured = {}
+
+    def fake_post(url, json, headers, timeout):
+        captured["json"] = json
+        return _FakeSmsResponse({"status": 1, "message": "موفق", "data": {"messageId": 124, "cost": 1.0}})
+
+    monkeypatch.setattr("app.services.sms_service.httpx.post", fake_post)
+
+    response = client.post(
+        "/api/v1/auth/register/request",
+        headers={"X-Client-Platform": "android"},
+        json={
+            "name": "Android Register User",
+            "username": "android_register_user",
+            "password": "password123",
+            "phone_number": "09120000000",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["json"]["templateId"] == 200000
+
+
+def test_register_request_bypass_skips_sms_and_accepts_fixed_code(client, db_session, monkeypatch):
+    _enable_sms_otp_bypass(db_session)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("sms.ir should not be called when OTP bypass is enabled")
+
+    monkeypatch.setattr("app.services.sms_service.httpx.post", fail_if_called)
+
+    requested = client.post(
+        "/api/v1/auth/register/request",
+        json={
+            "name": "Bypass Register User",
+            "username": "bypass_register_user",
+            "password": "password123",
+            "phone_number": "09120000000",
+        },
+    )
+
+    assert requested.status_code == 200
+    request_payload = requested.json()
+    assert request_payload["message_id"] is None
+
+    pending_record = db_session.query(PendingRegistration).one()
+    assert verify_password("12345", pending_record.code_hash)
+
+    wrong_code = client.post(
+        "/api/v1/auth/register/verify",
+        json={"registration_id": request_payload["registration_id"], "code": "00000"},
+    )
+    assert wrong_code.status_code == 400
+    assert wrong_code.json()["error"]["code"] == "registration_code_invalid"
+
+    verified = client.post(
+        "/api/v1/auth/register/verify",
+        json={"registration_id": request_payload["registration_id"], "code": "12345"},
+    )
+
+    assert verified.status_code == 200
+    assert verified.json()["user"]["username"] == "bypass_register_user"
 
 
 def test_invited_account_completes_without_pre_verifying_phone(client, db_session):
@@ -223,6 +306,29 @@ def test_request_phone_verification_sends_sms_and_hashes_code(client, auth_heade
     assert verify_password(sent_code, record.code_hash)
 
 
+def test_request_phone_verification_uses_android_sms_template_when_android_header_is_present(
+    client,
+    auth_headers,
+    monkeypatch,
+):
+    captured = {}
+
+    def fake_post(url, json, headers, timeout):
+        captured["json"] = json
+        return _FakeSmsResponse({"status": 1, "message": "موفق", "data": {"messageId": 89545112, "cost": 1.0}})
+
+    monkeypatch.setattr("app.services.sms_service.httpx.post", fake_post)
+
+    response = client.post(
+        "/api/v1/auth/phone/request-verification",
+        headers={**auth_headers, "X-Client-Platform": "android"},
+        json={"phone_number": "09120000000"},
+    )
+
+    assert response.status_code == 200
+    assert captured["json"]["templateId"] == 200000
+
+
 def test_request_phone_verification_requires_configuration(client, auth_headers, monkeypatch):
     monkeypatch.delenv("SMS_IR_API_KEY", raising=False)
     get_settings.cache_clear()
@@ -317,6 +423,43 @@ def test_verify_phone_number_sets_user_phone_number(client, auth_headers, db_ses
 
     record = db_session.query(PhoneVerificationCode).one()
     assert record.consumed_at is not None
+
+
+def test_verify_phone_number_bypass_skips_sms_and_accepts_fixed_code(client, auth_headers, db_session, monkeypatch):
+    _enable_sms_otp_bypass(db_session)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("sms.ir should not be called when OTP bypass is enabled")
+
+    monkeypatch.setattr("app.services.sms_service.httpx.post", fail_if_called)
+
+    requested = client.post(
+        "/api/v1/auth/phone/request-verification",
+        headers=auth_headers,
+        json={"phone_number": "09120000000"},
+    )
+    assert requested.status_code == 200
+    assert requested.json()["message_id"] is None
+
+    record = db_session.query(PhoneVerificationCode).one()
+    assert verify_password("12345", record.code_hash)
+
+    wrong_code = client.post(
+        "/api/v1/auth/phone/verify",
+        headers=auth_headers,
+        json={"phone_number": "09120000000", "code": "00000"},
+    )
+    assert wrong_code.status_code == 400
+    assert wrong_code.json()["error"]["code"] == "phone_verification_code_invalid"
+
+    verified = client.post(
+        "/api/v1/auth/phone/verify",
+        headers=auth_headers,
+        json={"phone_number": "09120000000", "code": "12345"},
+    )
+
+    assert verified.status_code == 200
+    assert verified.json()["phone_number"] == "989120000000"
 
 
 def test_verify_phone_number_rejects_invalid_code(client, auth_headers, db_session, monkeypatch):
@@ -434,6 +577,32 @@ def test_request_password_reset_works_with_username_and_masks_phone(client, db_s
     assert verify_password(captured["code"], record.code_hash)
 
 
+def test_request_password_reset_uses_android_sms_template_when_android_header_is_present(client, db_session, monkeypatch):
+    captured = {}
+    register = client.post(
+        "/api/v1/auth/register",
+        json={"name": "Reset User", "username": "android_reset_user", "password": "password123"},
+    )
+    user = db_session.get(User, register.json()["user"]["id"])
+    user.phone_number = "989120000000"
+    db_session.commit()
+
+    def fake_post(url, json, headers, timeout):
+        captured["json"] = json
+        return _FakeSmsResponse({"status": 1, "message": "موفق", "data": {"messageId": 79, "cost": 1.0}})
+
+    monkeypatch.setattr("app.services.sms_service.httpx.post", fake_post)
+
+    response = client.post(
+        "/api/v1/auth/forgot-password/request",
+        headers={"X-Client-Platform": "android"},
+        json={"identifier": "android_reset_user"},
+    )
+
+    assert response.status_code == 200
+    assert captured["json"]["templateId"] == 200000
+
+
 def test_request_password_reset_rejects_unknown_account(client):
     response = client.post("/api/v1/auth/forgot-password/request", json={"identifier": "missing_user"})
 
@@ -511,6 +680,43 @@ def test_verify_and_confirm_password_reset_returns_auth_response(client, db_sess
 
     relogin = client.post("/api/v1/auth/login", json={"username": "reset_user", "password": "new-password123"})
     assert relogin.status_code == 200
+
+
+def test_password_reset_bypass_skips_sms_and_accepts_fixed_code(client, db_session, monkeypatch):
+    _enable_sms_otp_bypass(db_session)
+    register = client.post(
+        "/api/v1/auth/register",
+        json={"name": "Reset User", "username": "bypass_reset_user", "password": "password123"},
+    )
+    user = db_session.get(User, register.json()["user"]["id"])
+    user.phone_number = "989120000000"
+    db_session.commit()
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("sms.ir should not be called when OTP bypass is enabled")
+
+    monkeypatch.setattr("app.services.sms_service.httpx.post", fail_if_called)
+
+    requested = client.post("/api/v1/auth/forgot-password/request", json={"identifier": "bypass_reset_user"})
+    assert requested.status_code == 200
+    assert requested.json()["message_id"] is None
+
+    record = db_session.query(PasswordResetCode).one()
+    assert verify_password("12345", record.code_hash)
+
+    wrong_code = client.post(
+        "/api/v1/auth/forgot-password/verify",
+        json={"identifier": "bypass_reset_user", "code": "00000"},
+    )
+    assert wrong_code.status_code == 400
+    assert wrong_code.json()["error"]["code"] == "password_reset_code_invalid"
+
+    verified = client.post(
+        "/api/v1/auth/forgot-password/verify",
+        json={"identifier": "bypass_reset_user", "code": "12345"},
+    )
+    assert verified.status_code == 200
+    assert verified.json()["reset_token"]
 
 
 def test_verify_password_reset_rejects_invalid_code(client, db_session, monkeypatch):

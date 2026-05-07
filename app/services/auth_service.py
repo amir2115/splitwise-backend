@@ -51,6 +51,7 @@ from app.services.sms_service import SmsVerifyResult, send_template_sms, send_ve
 
 PASSWORD_RESET_TOKEN_MINUTES = 15
 INVITED_ACCOUNT_TOKEN_MINUTES = 60 * 24 * 7
+SMS_OTP_BYPASS_CODE = "12345"
 
 
 def _validate_password(password: str) -> None:
@@ -126,6 +127,15 @@ def _mask_phone_number(phone_number: str) -> str:
     if len(phone_number) < 7:
         return phone_number
     return f"{phone_number[:5]}***{phone_number[-3:]}"
+
+
+def _is_sms_otp_bypass_enabled(db: Session) -> bool:
+    value = get_runtime_setting(db, "sms_otp_bypass_enabled")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
 
 
 def _get_latest_phone_verification_record(
@@ -228,9 +238,11 @@ def _create_user_record(db: Session, *, name: str, username: str, password: str,
     return user
 
 
-def _ensure_phone_verification_is_configured(db: Session) -> tuple[str, int, str]:
+def _ensure_phone_verification_is_configured(db: Session, *, is_android_client: bool = False) -> tuple[str, int, str]:
     api_key = get_runtime_setting(db, "sms_ir_api_key")
     template_id = get_runtime_setting_int(db, "sms_ir_verify_template_id")
+    if is_android_client:
+        template_id = get_runtime_setting_int(db, "sms_ir_verify_template_id_android") or template_id
     parameter_name = get_runtime_setting(db, "sms_ir_verify_parameter_name") or "OTP"
     if not api_key or template_id is None:
         raise DomainError(
@@ -261,8 +273,15 @@ def _ensure_phone_number_is_available(db: Session, *, phone_number: str, current
         raise DomainError(code="phone_number_taken", message="Phone number is already registered", status_code=status.HTTP_409_CONFLICT)
 
 
-def _request_phone_verification_for_user(db: Session, *, user: User, phone_number: str) -> PhoneVerificationRequestResponse:
+def _request_phone_verification_for_user(
+    db: Session,
+    *,
+    user: User,
+    phone_number: str,
+    is_android_client: bool = False,
+) -> PhoneVerificationRequestResponse:
     settings = get_settings()
+    sms_bypass_enabled = _is_sms_otp_bypass_enabled(db)
     if user.phone_number == phone_number and user.is_phone_verified:
         return PhoneVerificationRequestResponse(
             phone_number=phone_number,
@@ -272,7 +291,6 @@ def _request_phone_verification_for_user(db: Session, *, user: User, phone_numbe
         )
 
     _ensure_phone_number_is_available(db, phone_number=phone_number, current_user_id=user.id)
-    api_key, template_id, parameter_name = _ensure_phone_verification_is_configured(db)
     now = utcnow()
     active_record = _get_active_phone_verification_record(db, user_id=user.id)
     if active_record and active_record.phone_number == phone_number:
@@ -294,7 +312,7 @@ def _request_phone_verification_for_user(db: Session, *, user: User, phone_numbe
         active_record.consumed_at = now
         active_record.updated_at = now
 
-    code = _generate_verification_code(settings.phone_verification_code_length)
+    code = SMS_OTP_BYPASS_CODE if sms_bypass_enabled else _generate_verification_code(settings.phone_verification_code_length)
     expires_at = now + timedelta(seconds=settings.phone_verification_ttl_seconds)
     if active_record and active_record.phone_number == phone_number:
         record = active_record
@@ -319,17 +337,20 @@ def _request_phone_verification_for_user(db: Session, *, user: User, phone_numbe
         db.flush()
 
     _invalidate_other_active_phone_verifications(db, user_id=user.id, keep_id=record.id)
-    try:
-        sms_result = send_verify_sms(
-            api_key=api_key,
-            template_id=template_id,
-            parameter_name=parameter_name,
-            mobile=phone_number,
-            code=code,
-        )
-    except Exception:
-        db.rollback()
-        raise
+    sms_result = SmsVerifyResult(message_id=None, cost=None)
+    if not sms_bypass_enabled:
+        api_key, template_id, parameter_name = _ensure_phone_verification_is_configured(db, is_android_client=is_android_client)
+        try:
+            sms_result = send_verify_sms(
+                api_key=api_key,
+                template_id=template_id,
+                parameter_name=parameter_name,
+                mobile=phone_number,
+                code=code,
+            )
+        except Exception:
+            db.rollback()
+            raise
     db.commit()
     return PhoneVerificationRequestResponse(
         phone_number=phone_number,
@@ -424,8 +445,9 @@ def _get_pending_registration(db: Session, registration_id: str) -> PendingRegis
     return db.get(PendingRegistration, registration_id)
 
 
-def request_register(db: Session, payload: RegisterRequest) -> RegisterRequestResponse:
+def request_register(db: Session, payload: RegisterRequest, *, is_android_client: bool = False) -> RegisterRequestResponse:
     settings = get_settings()
+    sms_bypass_enabled = _is_sms_otp_bypass_enabled(db)
     name = _normalize_name(payload.name)
     username = _normalize_username(payload.username)
     _validate_password(payload.password)
@@ -447,7 +469,7 @@ def request_register(db: Session, payload: RegisterRequest) -> RegisterRequestRe
         record.consumed_at = now
         record.updated_at = now
 
-    code = _generate_verification_code(settings.phone_verification_code_length)
+    code = SMS_OTP_BYPASS_CODE if sms_bypass_enabled else _generate_verification_code(settings.phone_verification_code_length)
     expires_at = now + timedelta(seconds=settings.phone_verification_ttl_seconds)
     record = PendingRegistration(
         name=name,
@@ -462,18 +484,20 @@ def request_register(db: Session, payload: RegisterRequest) -> RegisterRequestRe
     )
     db.add(record)
     db.flush()
-    api_key, template_id, parameter_name = _ensure_phone_verification_is_configured(db)
-    try:
-        sms_result = send_verify_sms(
-            api_key=api_key,
-            template_id=template_id,
-            parameter_name=parameter_name,
-            mobile=phone_number,
-            code=code,
-        )
-    except Exception:
-        db.rollback()
-        raise
+    sms_result = SmsVerifyResult(message_id=None, cost=None)
+    if not sms_bypass_enabled:
+        api_key, template_id, parameter_name = _ensure_phone_verification_is_configured(db, is_android_client=is_android_client)
+        try:
+            sms_result = send_verify_sms(
+                api_key=api_key,
+                template_id=template_id,
+                parameter_name=parameter_name,
+                mobile=phone_number,
+                code=code,
+            )
+        except Exception:
+            db.rollback()
+            raise
     db.commit()
     return RegisterRequestResponse(
         registration_id=record.id,
@@ -484,8 +508,9 @@ def request_register(db: Session, payload: RegisterRequest) -> RegisterRequestRe
     )
 
 
-def resend_register_code(db: Session, payload: RegisterResendRequest) -> RegisterRequestResponse:
+def resend_register_code(db: Session, payload: RegisterResendRequest, *, is_android_client: bool = False) -> RegisterRequestResponse:
     settings = get_settings()
+    sms_bypass_enabled = _is_sms_otp_bypass_enabled(db)
     record = _get_pending_registration(db, payload.registration_id)
     if not record or record.consumed_at is not None:
         raise DomainError(code="registration_not_found", message="Registration request not found", status_code=status.HTTP_404_NOT_FOUND)
@@ -496,25 +521,27 @@ def resend_register_code(db: Session, payload: RegisterResendRequest) -> Registe
     if record.send_attempts >= settings.phone_verification_max_send_attempts_per_window:
         raise DomainError(code="registration_rate_limited", message="Registration code request limit reached", status_code=status.HTTP_429_TOO_MANY_REQUESTS)
 
-    code = _generate_verification_code(settings.phone_verification_code_length)
+    code = SMS_OTP_BYPASS_CODE if sms_bypass_enabled else _generate_verification_code(settings.phone_verification_code_length)
     record.code_hash = hash_password(code)
     record.expires_at = now + timedelta(seconds=settings.phone_verification_ttl_seconds)
     record.last_sent_at = now
     record.send_attempts += 1
     record.verify_attempts = 0
     record.updated_at = now
-    api_key, template_id, parameter_name = _ensure_phone_verification_is_configured(db)
-    try:
-        sms_result = send_verify_sms(
-            api_key=api_key,
-            template_id=template_id,
-            parameter_name=parameter_name,
-            mobile=record.phone_number,
-            code=code,
-        )
-    except Exception:
-        db.rollback()
-        raise
+    sms_result = SmsVerifyResult(message_id=None, cost=None)
+    if not sms_bypass_enabled:
+        api_key, template_id, parameter_name = _ensure_phone_verification_is_configured(db, is_android_client=is_android_client)
+        try:
+            sms_result = send_verify_sms(
+                api_key=api_key,
+                template_id=template_id,
+                parameter_name=parameter_name,
+                mobile=record.phone_number,
+                code=code,
+            )
+        except Exception:
+            db.rollback()
+            raise
     db.commit()
     return RegisterRequestResponse(
         registration_id=record.id,
@@ -711,9 +738,20 @@ def change_password(db: Session, user: User, payload: ChangePasswordRequest) -> 
     return _build_user_response(user)
 
 
-def request_phone_verification(db: Session, user: User, payload: PhoneVerificationRequest) -> PhoneVerificationRequestResponse:
+def request_phone_verification(
+    db: Session,
+    user: User,
+    payload: PhoneVerificationRequest,
+    *,
+    is_android_client: bool = False,
+) -> PhoneVerificationRequestResponse:
     phone_number = _normalize_phone_number(payload.phone_number)
-    return _request_phone_verification_for_user(db, user=user, phone_number=phone_number)
+    return _request_phone_verification_for_user(
+        db,
+        user=user,
+        phone_number=phone_number,
+        is_android_client=is_android_client,
+    )
 
 
 def verify_phone_number(db: Session, user: User, payload: PhoneVerificationConfirmRequest) -> UserResponse:
@@ -721,8 +759,9 @@ def verify_phone_number(db: Session, user: User, payload: PhoneVerificationConfi
     return _verify_phone_number_for_user(db, user=user, phone_number=phone_number, code=payload.code)
 
 
-def request_password_reset(db: Session, payload: PasswordResetRequest) -> PasswordResetRequestResponse:
+def request_password_reset(db: Session, payload: PasswordResetRequest, *, is_android_client: bool = False) -> PasswordResetRequestResponse:
     settings = get_settings()
+    sms_bypass_enabled = _is_sms_otp_bypass_enabled(db)
     identifier_kind, normalized_identifier = _normalize_identifier(payload.identifier)
     user = db.scalar(
         select(User).where(User.phone_number == normalized_identifier if identifier_kind == "phone" else User.username == normalized_identifier)
@@ -736,7 +775,6 @@ def request_password_reset(db: Session, payload: PasswordResetRequest) -> Passwo
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
-    api_key, template_id, parameter_name = _ensure_phone_verification_is_configured(db)
     now = utcnow()
     active_record = _get_active_password_reset_record(db, user_id=user.id)
     if active_record:
@@ -757,7 +795,7 @@ def request_password_reset(db: Session, payload: PasswordResetRequest) -> Passwo
         active_record.consumed_at = now
         active_record.updated_at = now
 
-    code = _generate_verification_code(settings.phone_verification_code_length)
+    code = SMS_OTP_BYPASS_CODE if sms_bypass_enabled else _generate_verification_code(settings.phone_verification_code_length)
     expires_at = now + timedelta(seconds=settings.phone_verification_ttl_seconds)
     if active_record and active_record.identifier_snapshot == normalized_identifier:
         record = active_record
@@ -785,17 +823,20 @@ def request_password_reset(db: Session, payload: PasswordResetRequest) -> Passwo
         db.flush()
 
     _invalidate_other_active_password_resets(db, user_id=user.id, keep_id=record.id)
-    try:
-        sms_result: SmsVerifyResult = send_verify_sms(
-            api_key=api_key,
-            template_id=template_id,
-            parameter_name=parameter_name,
-            mobile=user.phone_number,
-            code=code,
-        )
-    except Exception:
-        db.rollback()
-        raise
+    sms_result = SmsVerifyResult(message_id=None, cost=None)
+    if not sms_bypass_enabled:
+        api_key, template_id, parameter_name = _ensure_phone_verification_is_configured(db, is_android_client=is_android_client)
+        try:
+            sms_result = send_verify_sms(
+                api_key=api_key,
+                template_id=template_id,
+                parameter_name=parameter_name,
+                mobile=user.phone_number,
+                code=code,
+            )
+        except Exception:
+            db.rollback()
+            raise
 
     db.commit()
     return PasswordResetRequestResponse(

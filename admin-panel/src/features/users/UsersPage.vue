@@ -24,6 +24,7 @@ const editingUser = ref<AdminUserListItem | null>(null)
 const editForm = ref({
   name: '',
   phone_number: '',
+  is_phone_verified: false,
 })
 const deleteConfirmStep = ref(false)
 
@@ -35,7 +36,16 @@ const filters = computed<AdminUserListFilters>(() => ({
       : 'all',
   sort_by:
     typeof route.query.sort_by === 'string' &&
-    ['created_at', 'updated_at', 'name', 'username', 'groups_count', 'active_refresh_tokens_count'].includes(route.query.sort_by)
+    [
+      'created_at',
+      'updated_at',
+      'name',
+      'username',
+      'groups_count',
+      'active_refresh_tokens_count',
+      'has_phone_number',
+      'is_phone_verified',
+    ].includes(route.query.sort_by)
       ? (route.query.sort_by as AdminUserListFilters['sort_by'])
       : 'created_at',
   sort_order: route.query.sort_order === 'asc' ? 'asc' : 'desc',
@@ -131,6 +141,7 @@ function openEditModal(user: AdminUserListItem) {
   editForm.value = {
     name: user.name,
     phone_number: user.phone_number ? user.phone_number.replace(/^98/, '0') : '',
+    is_phone_verified: user.is_phone_verified,
   }
 }
 
@@ -150,6 +161,7 @@ async function submitEdit() {
     const payload: AdminUserUpdateRequest = {
       name: editForm.value.name.trim(),
       phone_number: editForm.value.phone_number.trim() || '',
+      is_phone_verified: editForm.value.phone_number.trim() ? editForm.value.is_phone_verified : false,
     }
     const updatedUser = await apiRequest<AdminUserListItem>(
       `/admin/users/${editingUser.value.id}`,
@@ -260,7 +272,7 @@ async function submitDelete() {
           <input
             v-model.trim="searchDraft"
             type="search"
-            placeholder="جست‌وجو با نام یا نام کاربری"
+            placeholder="جست‌وجو با نام، نام کاربری یا شماره تلفن"
           />
         </label>
 
@@ -288,6 +300,8 @@ async function submitDelete() {
             <option value="username">نام کاربری</option>
             <option value="groups_count">تعداد گروه‌ها</option>
             <option value="active_refresh_tokens_count">توکن فعال</option>
+            <option value="has_phone_number">دارای شماره تلفن</option>
+            <option value="is_phone_verified">وریفای شماره تلفن</option>
           </select>
         </label>
 
@@ -444,6 +458,17 @@ async function submitDelete() {
             <span>شماره تلفن</span>
             <input v-model.trim="editForm.phone_number" type="text" inputmode="numeric" placeholder="09120000000" :disabled="isUpdating" />
           </div>
+          <label class="field field--checkbox">
+            <span>وضعیت وریفای شماره تلفن</span>
+            <span class="checkbox-row" :class="{ 'checkbox-row--disabled': isUpdating || !editForm.phone_number.trim() }">
+              <input
+                v-model="editForm.is_phone_verified"
+                type="checkbox"
+                :disabled="isUpdating || !editForm.phone_number.trim()"
+              />
+              <span>شماره تلفن تایید شده است</span>
+            </span>
+          </label>
           <p class="user-edit-help">برای حذف شماره تلفن، فیلد را خالی بگذار.</p>
           <p v-if="updateErrorMessage" class="inline-error">{{ updateErrorMessage }}</p>
           <div class="user-delete-card">
@@ -484,6 +509,36 @@ async function submitDelete() {
 </template>
 
 <style scoped>
+.field--checkbox {
+  margin-bottom: 12px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 13px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.checkbox-row input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.checkbox-row span {
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.checkbox-row--disabled {
+  opacity: 0.6;
+}
+
 .users-actions-cell {
   display: flex;
   justify-content: flex-start;

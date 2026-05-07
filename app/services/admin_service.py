@@ -132,6 +132,14 @@ def _mask_secret(value: str | None) -> str | None:
     return f"{value[:4]}{'*' * (len(value) - 8)}{value[-4:]}"
 
 
+def _parse_runtime_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
 def _build_admin_user_item(db: Session, user: User) -> AdminUserListItem:
     now = utcnow()
     groups_count = int(
@@ -167,6 +175,26 @@ def _build_admin_user_item(db: Session, user: User) -> AdminUserListItem:
     )
 
 
+def _normalize_phone_search_value(value: str) -> str:
+    translation_table = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+    normalized = value.strip().translate(translation_table)
+    for char in (" ", "-", "(", ")", "+"):
+        normalized = normalized.replace(char, "")
+    return normalized
+
+
+def _build_phone_search_patterns(value: str) -> set[str]:
+    normalized = _normalize_phone_search_value(value)
+    if not normalized or not normalized.isdigit():
+        return set()
+    patterns = {normalized}
+    if normalized.startswith("0"):
+        patterns.add(f"98{normalized[1:]}")
+    if normalized.startswith("98"):
+        patterns.add(f"0{normalized[2:]}")
+    return {pattern for pattern in patterns if pattern}
+
+
 def list_users(db: Session, query: AdminUsersQuery) -> AdminUserListResponse:
     now = utcnow()
     group_counts_subquery = (
@@ -200,8 +228,11 @@ def list_users(db: Session, query: AdminUsersQuery) -> AdminUserListResponse:
     )
 
     if query.search:
-        pattern = f"%{query.search.strip()}%"
-        base_query = base_query.where(or_(User.name.ilike(pattern), User.username.ilike(pattern)))
+        search_value = query.search.strip()
+        search_filters = [User.name.ilike(f"%{search_value}%"), User.username.ilike(f"%{search_value}%")]
+        for phone_pattern in _build_phone_search_patterns(search_value):
+            search_filters.append(User.phone_number.ilike(f"%{phone_pattern}%"))
+        base_query = base_query.where(or_(*search_filters))
     if query.must_change_password is not None:
         base_query = base_query.where(User.must_change_password.is_(query.must_change_password))
 
@@ -222,6 +253,8 @@ def list_users(db: Session, query: AdminUsersQuery) -> AdminUserListResponse:
         "username": subquery.c.username,
         "groups_count": subquery.c.groups_count,
         "active_refresh_tokens_count": subquery.c.active_refresh_tokens_count,
+        "has_phone_number": case((subquery.c.phone_number.is_not(None), 1), else_=0),
+        "is_phone_verified": case((subquery.c.is_phone_verified.is_(True), 1), else_=0),
     }
     sort_column = sort_columns[query.sort_by]
     ordered_query: Select = select(subquery)
@@ -256,7 +289,7 @@ def update_user(db: Session, *, user_id: str, payload: AdminUserUpdateRequest) -
     if not user:
         raise DomainError(code="admin_user_not_found", message="User not found", status_code=status.HTTP_404_NOT_FOUND)
 
-    if payload.name is None and payload.phone_number is None:
+    if payload.name is None and payload.phone_number is None and payload.is_phone_verified is None:
         raise DomainError(code="validation_error", message="At least one field must be provided", status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
     if payload.name is not None:
@@ -273,7 +306,15 @@ def update_user(db: Session, *, user_id: str, payload: AdminUserUpdateRequest) -
             if existing:
                 raise DomainError(code="phone_number_taken", message="Phone number is already registered", status_code=status.HTTP_409_CONFLICT)
             user.phone_number = normalized_phone_number
-            user.is_phone_verified = True
+
+    if payload.is_phone_verified is not None:
+        if not user.phone_number and payload.is_phone_verified:
+            raise DomainError(
+                code="phone_number_missing",
+                message="Phone number is required before it can be verified",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        user.is_phone_verified = bool(payload.is_phone_verified)
 
     user.updated_at = utcnow()
     db.commit()
@@ -306,10 +347,13 @@ def get_runtime_settings(db: Session) -> AdminRuntimeSettingsResponse:
     values = list_runtime_settings(db)
     api_key = values.get("sms_ir_api_key")
     return AdminRuntimeSettingsResponse(
+        phone_verification_required=_parse_runtime_bool(values.get("phone_verification_required")),
         sms_ir_api_key_masked=_mask_secret(api_key),
         sms_ir_api_key_configured=bool(api_key),
         sms_ir_verify_template_id=str(values["sms_ir_verify_template_id"]) if values.get("sms_ir_verify_template_id") is not None else None,
+        sms_ir_verify_template_id_android=str(values["sms_ir_verify_template_id_android"]) if values.get("sms_ir_verify_template_id_android") is not None else None,
         sms_ir_verify_parameter_name=values.get("sms_ir_verify_parameter_name"),
+        sms_otp_bypass_enabled=_parse_runtime_bool(values.get("sms_otp_bypass_enabled")),
         sms_ir_invited_account_template_id=str(values["sms_ir_invited_account_template_id"]) if values.get("sms_ir_invited_account_template_id") is not None else None,
         sms_ir_invited_account_link_parameter_name=values.get("sms_ir_invited_account_link_parameter_name"),
         sms_ir_invited_account_group_name_parameter_name=values.get("sms_ir_invited_account_group_name_parameter_name"),
@@ -321,9 +365,12 @@ def update_runtime_settings(db: Session, payload: AdminRuntimeSettingsUpdateRequ
     set_runtime_settings(
         db,
         {
+            "phone_verification_required": "true" if payload.phone_verification_required else None if payload.phone_verification_required is None else "false",
             "sms_ir_api_key": payload.sms_ir_api_key,
             "sms_ir_verify_template_id": payload.sms_ir_verify_template_id,
+            "sms_ir_verify_template_id_android": payload.sms_ir_verify_template_id_android,
             "sms_ir_verify_parameter_name": payload.sms_ir_verify_parameter_name,
+            "sms_otp_bypass_enabled": "true" if payload.sms_otp_bypass_enabled else None if payload.sms_otp_bypass_enabled is None else "false",
             "sms_ir_invited_account_template_id": payload.sms_ir_invited_account_template_id,
             "sms_ir_invited_account_link_parameter_name": payload.sms_ir_invited_account_link_parameter_name,
             "sms_ir_invited_account_group_name_parameter_name": payload.sms_ir_invited_account_group_name_parameter_name,

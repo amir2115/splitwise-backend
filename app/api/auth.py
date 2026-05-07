@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -52,14 +54,22 @@ from app.services.auth_service import (
 router = APIRouter()
 
 
+def _is_android_client(x_client_platform: Optional[str]) -> bool:
+    return (x_client_platform or "").strip().lower() == "android"
+
+
 @router.post("/register", response_model=AuthResponse, status_code=201)
 def register(payload: UserRegister, db: Session = Depends(get_db)) -> AuthResponse:
     return register_user(db, payload)
 
 
 @router.post("/register/request", response_model=RegisterRequestResponse)
-def register_request(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterRequestResponse:
-    return request_register(db, payload)
+def register_request(
+    payload: RegisterRequest,
+    db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(default=None),
+) -> RegisterRequestResponse:
+    return request_register(db, payload, is_android_client=_is_android_client(x_client_platform))
 
 
 @router.post("/register/verify", response_model=AuthResponse)
@@ -68,8 +78,12 @@ def register_verify(payload: RegisterVerifyRequest, db: Session = Depends(get_db
 
 
 @router.post("/register/resend", response_model=RegisterRequestResponse)
-def register_resend(payload: RegisterResendRequest, db: Session = Depends(get_db)) -> RegisterRequestResponse:
-    return resend_register_code(db, payload)
+def register_resend(
+    payload: RegisterResendRequest,
+    db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(default=None),
+) -> RegisterRequestResponse:
+    return resend_register_code(db, payload, is_android_client=_is_android_client(x_client_platform))
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -104,8 +118,9 @@ def change_current_password(
 def request_forgot_password(
     payload: PasswordResetRequest,
     db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(default=None),
 ) -> PasswordResetRequestResponse:
-    return request_password_reset(db, payload)
+    return request_password_reset(db, payload, is_android_client=_is_android_client(x_client_platform))
 
 
 @router.post("/forgot-password/verify", response_model=PasswordResetVerifyResponse)
@@ -153,8 +168,9 @@ def request_current_user_phone_verification(
     payload: PhoneVerificationRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    x_client_platform: Optional[str] = Header(default=None),
 ) -> PhoneVerificationRequestResponse:
-    return request_phone_verification(db, current_user, payload)
+    return request_phone_verification(db, current_user, payload, is_android_client=_is_android_client(x_client_platform))
 
 
 @router.post("/phone/verify", response_model=UserResponse)

@@ -5,10 +5,11 @@ set -euo pipefail
 # Update these values before running the script.
 API_BASE_URL="https://api.splitwise.ir/api/v1"
 ADMIN_SECRET="W>HKR9b5q\6@z8Z2#Ck5),2="
+SPLITWISE_VERSION_NAME="1.1.0"
 APK_FILE_NAME="app-organic-release.apk"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APK_PATH="$SCRIPT_DIR/$APK_FILE_NAME"
+APK_PATH="$SCRIPT_DIR/android_releases/$SPLITWISE_VERSION_NAME/$APK_FILE_NAME"
 UPLOAD_URL="${API_BASE_URL%/}/admin/app-download/apk"
 
 if [[ ! -f "$APK_PATH" ]]; then

@@ -37,6 +37,7 @@ def test_health_defaults_without_record(client):
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
+        "phone_verification_required": False,
         "min_supported_version_code": None,
         "latest_version_code": None,
         "update_mode": None,
@@ -54,6 +55,7 @@ def test_health_exposes_update_policy_from_app_download_record(client):
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
+        "phone_verification_required": False,
         "min_supported_version_code": 12,
         "latest_version_code": 42,
         "update_mode": "hard",
@@ -79,6 +81,25 @@ def test_health_uses_store_specific_url_from_header_with_fallbacks(client):
     assert myket_response.json()["store_url"] == "https://myket.ir/app/com.encer.offlinesplitwise"
     assert organic_response.json()["store_url"] == "https://splitwise.ir/files/app.apk"
     assert invalid_response.json()["store_url"] == "https://splitwise.ir/files/app.apk"
+
+
+def test_health_exposes_phone_verification_runtime_flag(client):
+    login = client.post(
+        "/api/v1/admin/auth/login",
+        json={"username": "panel_admin", "password": "super-secret"},
+    ).json()
+    headers = {"Authorization": f"Bearer {login['access_token']}"}
+
+    client.patch(
+        "/api/v1/admin/settings/runtime",
+        headers=headers,
+        json={"phone_verification_required": True},
+    )
+
+    response = client.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert response.json()["phone_verification_required"] is True
 
 
 def test_health_falls_back_to_first_available_link_when_direct_link_is_missing(client):

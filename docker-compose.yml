@@ -1,0 +1,149 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-offline_splitwise}
+      POSTGRES_USER: ${POSTGRES_USER:-splitwise}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ${BACKEND_CONTEXT:-.}
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${BACKEND_ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-splitwise}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-offline_splitwise}}
+      HOST: 0.0.0.0
+      PORT: 8000
+      APP_DOWNLOAD_UPLOAD_DIR: /files
+      ARTICLE_IMAGE_UPLOAD_DIR: /files/articles
+    volumes:
+      - uploaded_files:/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  landing:
+    build:
+      context: ${LANDING_CONTEXT:-./landing}
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://api.splitwise.ir/api/v1}
+        LANDING_ARTICLES_API_BASE_URL: ${LANDING_ARTICLES_API_BASE_URL:-https://api.splitwise.ir/api/v1}
+        VITE_SHOW_ENAMAD: ${VITE_SHOW_ENAMAD:-true}
+    restart: unless-stopped
+
+  admin-panel:
+    build:
+      context: ${ADMIN_PANEL_CONTEXT:-./admin-panel}
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://api.splitwise.ir/api/v1}
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ${WEB_CONTEXT:-./web}
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://api.splitwise.ir/api/v1}
+        VITE_PHONE_VERIFICATION_REQUIRED: ${VITE_PHONE_VERIFICATION_REQUIRED:-false}
+    restart: unless-stopped
+
+  mailserver:
+    image: mailserver/docker-mailserver:latest
+    hostname: ${MAIL_HOSTNAME:-mail.splitwise.ir}
+    env_file:
+      - ${MAILSERVER_ENV_FILE:-./deploy/mailserver/mailserver.env}
+    restart: unless-stopped
+    ports:
+      - "25:25"
+      - "143:143"
+      - "465:465"
+      - "587:587"
+      - "993:993"
+    volumes:
+      - mail_data:/var/mail
+      - mail_state:/var/mail-state
+      - mail_logs:/var/log/mail
+      - ./deploy/mailserver/config:/tmp/docker-mailserver
+      - ./deploy/nginx/certs/${MAIL_HOSTNAME:-mail.splitwise.ir}:/etc/letsencrypt/live/${MAIL_HOSTNAME:-mail.splitwise.ir}:ro
+      - /etc/localtime:/etc/localtime:ro
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn | grep -q ':25 '"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  roundcube:
+    image: roundcube/roundcubemail:1.6-apache
+    restart: unless-stopped
+    environment:
+      ROUNDCUBEMAIL_DEFAULT_HOST: ${ROUNDCUBEMAIL_DEFAULT_HOST:-mailserver}
+      ROUNDCUBEMAIL_DEFAULT_PORT: ${ROUNDCUBEMAIL_DEFAULT_PORT:-143}
+      ROUNDCUBEMAIL_SMTP_SERVER: ${ROUNDCUBEMAIL_SMTP_SERVER:-mailserver}
+      ROUNDCUBEMAIL_SMTP_PORT: ${ROUNDCUBEMAIL_SMTP_PORT:-587}
+      ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE: ${ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE:-25M}
+    volumes:
+      - roundcube_db:/var/roundcube/db
+    depends_on:
+      - mailserver
+
+  postgres-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-offline_splitwise}
+      POSTGRES_USER: ${POSTGRES_USER:-splitwise}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    command: ["sh", "/scripts/backup-loop.sh"]
+    volumes:
+      - ./deploy/postgres:/scripts:ro
+      - ./backups/postgres:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/templates:/etc/nginx/templates:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+      - ./deploy/nginx/acme:/var/www/certbot:ro
+    depends_on:
+      - backend
+      - landing
+      - admin-panel
+      - web
+      - roundcube
+
+volumes:
+  postgres_data:
+  uploaded_files:
+  mail_data:
+  mail_state:
+  mail_logs:
+  roundcube_db:

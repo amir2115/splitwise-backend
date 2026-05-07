@@ -14,6 +14,7 @@ def test_build_health_response_returns_ok_when_app_download_lookup_fails(monkeyp
     response = health_service.build_health_response(Mock(), "organic")
 
     assert response.status == "ok"
+    assert response.phone_verification_required is False
     assert response.min_supported_version_code is None
     assert response.latest_version_code is None
     assert response.update_mode is None
