@@ -71,6 +71,10 @@ services:
   mailserver:
     image: mailserver/docker-mailserver:latest
     hostname: ${MAIL_HOSTNAME:-mail.splitwise.ir}
+    networks:
+      default:
+        aliases:
+          - ${MAIL_HOSTNAME:-mail.splitwise.ir}
     env_file:
       - ${MAILSERVER_ENV_FILE:-./deploy/mailserver/mailserver.env}
     restart: unless-stopped
@@ -99,9 +103,9 @@ services:
     image: roundcube/roundcubemail:latest
     restart: unless-stopped
     environment:
-      ROUNDCUBEMAIL_DEFAULT_HOST: ${ROUNDCUBEMAIL_DEFAULT_HOST:-mailserver}
-      ROUNDCUBEMAIL_DEFAULT_PORT: ${ROUNDCUBEMAIL_DEFAULT_PORT:-143}
-      ROUNDCUBEMAIL_SMTP_SERVER: ${ROUNDCUBEMAIL_SMTP_SERVER:-mailserver}
+      ROUNDCUBEMAIL_DEFAULT_HOST: ${ROUNDCUBEMAIL_DEFAULT_HOST:-ssl://mail.splitwise.ir}
+      ROUNDCUBEMAIL_DEFAULT_PORT: ${ROUNDCUBEMAIL_DEFAULT_PORT:-993}
+      ROUNDCUBEMAIL_SMTP_SERVER: ${ROUNDCUBEMAIL_SMTP_SERVER:-tls://mail.splitwise.ir}
       ROUNDCUBEMAIL_SMTP_PORT: ${ROUNDCUBEMAIL_SMTP_PORT:-587}
       ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE: ${ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE:-25M}
     volumes:
