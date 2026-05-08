@@ -1,6 +1,7 @@
-def test_equal_split_normalization(client, auth_headers, seeded_group):
+def test_equal_split_normalization(client, seeded_group):
     group = seeded_group["group"]
     alice, bob, carol = seeded_group["members"]
+    auth_headers = seeded_group["users"]["owner"]["headers"]
 
     response = client.post(
         "/api/v1/expenses",
@@ -27,9 +28,10 @@ def test_equal_split_normalization(client, auth_headers, seeded_group):
     assert shares[expected_order[2]] == 33
 
 
-def test_exact_split_validation_failure(client, auth_headers, seeded_group):
+def test_exact_split_validation_failure(client, seeded_group):
     group = seeded_group["group"]
     alice, bob, _ = seeded_group["members"]
+    auth_headers = seeded_group["users"]["owner"]["headers"]
     response = client.post(
         "/api/v1/expenses",
         headers=auth_headers,

@@ -74,7 +74,7 @@ def admin_settings(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, Non
 
 
 @pytest.fixture
-def db_session() -> Generator[Session, None, None]:
+def db_session(setup_database: None) -> Generator[Session, None, None]:
     db = TestingSessionLocal()
     try:
         yield db

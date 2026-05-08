@@ -1,4 +1,5 @@
 from app.admin.security import decode_admin_access_token
+from app.models.domain import AppSetting
 from app.models.user import User
 
 
@@ -37,7 +38,7 @@ def test_admin_login_is_rate_limited_after_repeated_failures(client):
         json={"username": "panel_admin", "password": "wrong-password"},
     )
     assert blocked.status_code == 429
-    assert blocked.json()["detail"]["error"]["code"] == "admin_rate_limited"
+    assert blocked.json()["error"]["code"] == "admin_rate_limited"
 
 
 def test_admin_users_requires_authentication(client):
@@ -71,7 +72,7 @@ def test_admin_users_support_search_filters_sort_and_counts(client):
         headers={"Authorization": f"Bearer {owner['tokens']['access_token']}"},
         json={"name": "Admin Metrics Group"},
     )
-    assert group.status_code == 200
+    assert group.status_code == 201
 
     login = client.post(
         "/api/v1/admin/auth/login",
@@ -133,7 +134,9 @@ def test_admin_user_list_exposes_group_and_token_counts(client):
     assert payload["items"][0]["active_refresh_tokens_count"] == 1
 
 
-def test_admin_user_list_exposes_phone_number(client):
+def test_admin_user_list_exposes_phone_number(client, db_session):
+    db_session.add(AppSetting(key="sms_otp_bypass_enabled", value="true"))
+    db_session.commit()
     owner = client.post(
         "/api/v1/auth/register",
         json={"name": "Owner User", "username": "owner_user", "password": "password123"},

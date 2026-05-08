@@ -1,6 +1,7 @@
-def test_balance_calculation_behavior(client, auth_headers, seeded_group):
+def test_balance_calculation_behavior(client, seeded_group):
     group = seeded_group["group"]
     alice, bob, carol = seeded_group["members"]
+    auth_headers = seeded_group["users"]["owner"]["headers"]
 
     client.post(
         "/api/v1/expenses",

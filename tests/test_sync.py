@@ -253,8 +253,8 @@ def test_sync_creates_pending_invite_for_valid_disconnected_username(client, aut
     assert response.status_code == 200
 
     owner_members = client.get(f"/api/v1/members?group_id={group['id']}", headers=auth_headers).json()
-    assert owner_members[0]["membership_status"] == MembershipStatus.PENDING_INVITE
-    assert owner_members[0]["username"] == "second"
+    synced_member = next(member for member in owner_members if member["username"] == "second")
+    assert synced_member["membership_status"] == MembershipStatus.PENDING_INVITE
 
     invites = client.get("/api/v1/group-invites", headers=second_account["headers"])
     assert invites.status_code == 200

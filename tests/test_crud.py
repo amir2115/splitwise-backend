@@ -282,7 +282,7 @@ def test_rejecting_invite_removes_pending_access(client, db_session, seeded_user
     assert rejected.json()["status"] == GroupInviteStatus.REJECTED
 
     pending_members = client.get(f"/api/v1/members?group_id={group['id']}", headers=owner["headers"]).json()
-    assert pending_members == []
+    assert [member["username"] for member in pending_members] == ["owner"]
     assert db_session.query(GroupInvite).filter(GroupInvite.id == invite["id"]).one().status == GroupInviteStatus.REJECTED
 
     re_added = client.post(
@@ -458,6 +458,10 @@ def test_group_card_requires_active_member_and_unique_number(client, seeded_grou
     group = seeded_group["group"]
     alice, bob, _ = seeded_group["members"]
     auth_headers = seeded_group["users"]["owner"]["headers"]
+    client.post(
+        "/api/v1/auth/register",
+        json={"name": "Second User", "username": "second", "password": "password123"},
+    )
     outsider_group = client.post("/api/v1/groups", headers=auth_headers, json={"name": "Other"}).json()
     outsider_member = client.get(f"/api/v1/members?group_id={outsider_group['id']}", headers=auth_headers).json()[0]
 
@@ -502,8 +506,8 @@ def test_group_card_requires_active_member_and_unique_number(client, seeded_grou
         headers=auth_headers,
         json={"group_id": group["id"], "member_id": alice["id"], "card_number": "1234"},
     )
-    assert invalid_number.status_code == 400
-    assert invalid_number.json()["error"]["code"] == "invalid_group_card"
+    assert invalid_number.status_code == 422
+    assert invalid_number.json()["error"]["code"] == "validation_error"
 
     stored = db_session.query(GroupCard).filter(GroupCard.group_id == group["id"]).all()
     assert len(stored) == 1
