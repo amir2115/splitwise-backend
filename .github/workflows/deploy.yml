@@ -63,6 +63,7 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
-          docker compose --env-file .env.production up -d --build backend admin-panel nginx
+          docker compose --env-file .env.production up -d --build backend admin-panel
+          docker compose --env-file .env.production up -d --no-deps nginx
           docker compose --env-file .env.production exec -T backend alembic upgrade head
           REMOTE
