@@ -7,41 +7,10 @@ on:
 
 concurrency:
   group: backend-stack-deploy
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  changes:
-    runs-on: self-hosted
-    outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      admin_panel: ${{ steps.filter.outputs.admin_panel }}
-      deploy: ${{ steps.filter.outputs.deploy }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            backend:
-              - 'app/**'
-              - 'alembic/**'
-              - 'tests/**'
-              - 'requirements.txt'
-              - 'main.py'
-              - 'alembic.ini'
-              - 'Dockerfile'
-              - '.dockerignore'
-            admin_panel:
-              - 'admin-panel/**'
-            deploy:
-              - 'docker-compose.yml'
-              - '.env.production.example'
-              - 'deploy/**'
-              - '.github/workflows/deploy.yml'
-
   test-backend:
-    needs: changes
-    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.deploy == 'true'
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
@@ -54,8 +23,6 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
 
   test-admin-panel:
-    needs: changes
-    if: needs.changes.outputs.admin_panel == 'true' || needs.changes.outputs.deploy == 'true'
     runs-on: self-hosted
     defaults:
       run:
@@ -72,12 +39,7 @@ jobs:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://api.splitwise.ir/api/v1' }}
 
   deploy:
-    needs: [changes, test-backend, test-admin-panel]
-    if: |
-      always() &&
-      (needs.changes.outputs.backend == 'true' || needs.changes.outputs.admin_panel == 'true' || needs.changes.outputs.deploy == 'true') &&
-      (needs.test-backend.result == 'success' || needs.test-backend.result == 'skipped') &&
-      (needs.test-admin-panel.result == 'success' || needs.test-admin-panel.result == 'skipped')
+    needs: [test-backend, test-admin-panel]
     runs-on: self-hosted
     steps:
       - name: Configure SSH
@@ -93,24 +55,14 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
           DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/opt/offline-splitwise/backend' }}
-          DEPLOY_BACKEND: ${{ needs.changes.outputs.backend }}
-          DEPLOY_ADMIN_PANEL: ${{ needs.changes.outputs.admin_panel }}
-          DEPLOY_STACK: ${{ needs.changes.outputs.deploy }}
         run: |
           ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_ROOT='$DEPLOY_ROOT' DEPLOY_BACKEND='$DEPLOY_BACKEND' DEPLOY_ADMIN_PANEL='$DEPLOY_ADMIN_PANEL' DEPLOY_STACK='$DEPLOY_STACK' bash -s" <<'REMOTE'
+            "DEPLOY_ROOT='$DEPLOY_ROOT' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$DEPLOY_ROOT"
           git fetch origin main
           git reset --hard origin/main
 
-          services=()
-          if [ "$DEPLOY_BACKEND" = "true" ] || [ "$DEPLOY_STACK" = "true" ]; then services+=("backend"); fi
-          if [ "$DEPLOY_ADMIN_PANEL" = "true" ] || [ "$DEPLOY_STACK" = "true" ]; then services+=("admin-panel"); fi
-          if [ "$DEPLOY_STACK" = "true" ]; then services+=("nginx" "postgres-backup" "mailserver" "roundcube"); fi
-
-          docker compose --env-file .env.production up -d --build "${services[@]}"
-          if [ "$DEPLOY_BACKEND" = "true" ] || [ "$DEPLOY_STACK" = "true" ]; then
-            docker compose --env-file .env.production exec -T backend alembic upgrade head
-          fi
+          docker compose --env-file .env.production up -d --build backend admin-panel nginx
+          docker compose --env-file .env.production exec -T backend alembic upgrade head
           REMOTE
