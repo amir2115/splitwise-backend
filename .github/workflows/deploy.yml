@@ -43,10 +43,40 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
+      - name: Debug runner state
+        run: |
+          echo "===== WHOAMI ====="
+          whoami
+      
+          echo "===== PWD ====="
+          pwd
+      
+          echo "===== FILES ====="
+          ls -la
+      
+          echo "===== GITHUB_WORKSPACE ====="
+          echo "$GITHUB_WORKSPACE"
+      
+          echo "===== WORKSPACE FILES ====="
+          ls -la "$GITHUB_WORKSPACE"
+      
+          echo "===== FIND DOCKERFILES ====="
+          find "$GITHUB_WORKSPACE" -name Dockerfile
+      
+          echo "===== DISK ====="
+          df -h
+      
+          echo "===== DOCKER ====="
+          docker version
+      
       - name: Build backend image
         run: |
-          docker build \ 
+          cd "$GITHUB_WORKSPACE"
+      
+          docker build \
+            --progress=plain \
             -t splitwise/backend:local \
+            -f Dockerfile \
             .
 
       - name: Build admin panel image
