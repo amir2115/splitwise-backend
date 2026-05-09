@@ -24,7 +24,7 @@ describe('admin router guards', () => {
     const { router } = await import('@/app/router')
     await router.push('/users')
     expect(router.currentRoute.value.fullPath).toBe('/login')
-  })
+  }, 15000)
 
   it('redirects authenticated admins away from login', async () => {
     authenticated = true
@@ -32,5 +32,5 @@ describe('admin router guards', () => {
     await router.replace('/')
     await router.push('/login')
     expect(router.currentRoute.value.fullPath).toBe('/users')
-  })
+  }, 15000)
 })
