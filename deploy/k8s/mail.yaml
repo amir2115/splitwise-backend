@@ -1,0 +1,193 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailserver
+  namespace: splitwise
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mailserver
+  template:
+    metadata:
+      labels:
+        app: mailserver
+    spec:
+      containers:
+        - name: mailserver
+          image: mailserver/docker-mailserver:latest
+          ports:
+            - containerPort: 25
+              name: smtp
+            - containerPort: 143
+              name: imap
+            - containerPort: 465
+              name: smtps
+            - containerPort: 587
+              name: submission
+            - containerPort: 993
+              name: imaps
+          env:
+            - name: OVERRIDE_HOSTNAME
+              value: mail.splitwise.ir
+            - name: POSTMASTER_ADDRESS
+              value: postmaster@splitwise.ir
+            - name: SSL_TYPE
+              value: letsencrypt
+            - name: ENABLE_RSPAMD
+              value: "1"
+            - name: ENABLE_CLAMAV
+              value: "0"
+            - name: ENABLE_FAIL2BAN
+              value: "1"
+            - name: ENABLE_POSTGREY
+              value: "0"
+            - name: ENABLE_POP3
+              value: "0"
+            - name: ONE_DIR
+              value: "1"
+            - name: PERMIT_DOCKER
+              value: network
+            - name: SPOOF_PROTECTION
+              value: "1"
+            - name: MOVE_SPAM_TO_JUNK
+              value: "1"
+            - name: POSTFIX_INET_PROTOCOLS
+              value: ipv4
+          volumeMounts:
+            - name: mail-data
+              mountPath: /var/mail
+            - name: mail-state
+              mountPath: /var/mail-state
+            - name: mail-logs
+              mountPath: /var/log/mail
+            - name: mail-config
+              mountPath: /tmp/docker-mailserver
+            - name: mail-tls
+              mountPath: /etc/letsencrypt/live/mail.splitwise.ir
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: smtp
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: mail-data
+          hostPath:
+            path: /opt/offline-splitwise/k8s-data/mail/data
+            type: DirectoryOrCreate
+        - name: mail-state
+          hostPath:
+            path: /opt/offline-splitwise/k8s-data/mail/state
+            type: DirectoryOrCreate
+        - name: mail-logs
+          hostPath:
+            path: /opt/offline-splitwise/k8s-data/mail/logs
+            type: DirectoryOrCreate
+        - name: mail-config
+          hostPath:
+            path: /opt/offline-splitwise/backend/deploy/mailserver/config
+            type: DirectoryOrCreate
+        - name: mail-tls
+          secret:
+            secretName: mail-splitwise-ir-tls
+            items:
+              - key: tls.crt
+                path: fullchain.pem
+              - key: tls.key
+                path: privkey.pem
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailserver
+  namespace: splitwise
+spec:
+  type: LoadBalancer
+  selector:
+    app: mailserver
+  ports:
+    - name: smtp
+      port: 25
+      targetPort: smtp
+    - name: imap
+      port: 143
+      targetPort: imap
+    - name: smtps
+      port: 465
+      targetPort: smtps
+    - name: submission
+      port: 587
+      targetPort: submission
+    - name: imaps
+      port: 993
+      targetPort: imaps
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: roundcube
+  namespace: splitwise
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: roundcube
+  template:
+    metadata:
+      labels:
+        app: roundcube
+    spec:
+      containers:
+        - name: roundcube
+          image: roundcube/roundcubemail:latest
+          ports:
+            - containerPort: 80
+              name: http
+          env:
+            - name: ROUNDCUBEMAIL_DEFAULT_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: splitwise-config
+                  key: ROUNDCUBEMAIL_DEFAULT_HOST
+            - name: ROUNDCUBEMAIL_DEFAULT_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: splitwise-config
+                  key: ROUNDCUBEMAIL_DEFAULT_PORT
+            - name: ROUNDCUBEMAIL_SMTP_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: splitwise-config
+                  key: ROUNDCUBEMAIL_SMTP_SERVER
+            - name: ROUNDCUBEMAIL_SMTP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: splitwise-config
+                  key: ROUNDCUBEMAIL_SMTP_PORT
+            - name: ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: splitwise-config
+                  key: ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE
+          volumeMounts:
+            - name: roundcube-db
+              mountPath: /var/roundcube/db
+      volumes:
+        - name: roundcube-db
+          hostPath:
+            path: /opt/offline-splitwise/k8s-data/roundcube
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: roundcube
+  namespace: splitwise
+spec:
+  selector:
+    app: roundcube
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

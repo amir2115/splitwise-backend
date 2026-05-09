@@ -1,0 +1,85 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: splitwise-web
+  namespace: splitwise
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - splitwise.ir
+        - www.splitwise.ir
+      secretName: splitwise-ir-tls
+    - hosts:
+        - api.splitwise.ir
+      secretName: api-splitwise-ir-tls
+    - hosts:
+        - panel.splitwise.ir
+      secretName: panel-splitwise-ir-tls
+    - hosts:
+        - pwa.splitwise.ir
+      secretName: pwa-splitwise-ir-tls
+    - hosts:
+        - webmail.splitwise.ir
+      secretName: webmail-splitwise-ir-tls
+  rules:
+    - host: splitwise.ir
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: landing
+                port:
+                  name: http
+    - host: www.splitwise.ir
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: landing
+                port:
+                  name: http
+    - host: api.splitwise.ir
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  name: http
+    - host: panel.splitwise.ir
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-panel
+                port:
+                  name: http
+    - host: pwa.splitwise.ir
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http
+    - host: webmail.splitwise.ir
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: roundcube
+                port:
+                  name: http

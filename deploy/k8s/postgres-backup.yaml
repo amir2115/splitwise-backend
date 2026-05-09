@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: splitwise
+spec:
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-dump
+              image: postgres:16-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  set -euo pipefail
+                  ts="$(date +%Y%m%d-%H%M%S)"
+                  pg_dump -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "/backups/${POSTGRES_DB}-${ts}.dump"
+                  find /backups -type f -name "${POSTGRES_DB}-*.dump" -mtime +14 -delete
+              env:
+                - name: POSTGRES_DB
+                  valueFrom:
+                    secretKeyRef:
+                      name: splitwise-runtime-secret
+                      key: POSTGRES_DB
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: splitwise-runtime-secret
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: splitwise-runtime-secret
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: postgres-backups
+                  mountPath: /backups
+          volumes:
+            - name: postgres-backups
+              hostPath:
+                path: /opt/offline-splitwise/backend/backups/postgres
+                type: DirectoryOrCreate
