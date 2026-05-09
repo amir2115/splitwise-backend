@@ -42,35 +42,73 @@ jobs:
     needs: [test-backend, test-admin-panel]
     runs-on: [self-hosted, Linux, X64]
     steps:
-      - name: Configure SSH
+      - uses: actions/checkout@v4
+      - name: Build backend image
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          docker build \ 
+            -t splitwise/backend:local \
+            .
 
-      - name: Deploy changed services
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+      - name: Build admin panel image
+        run: |
+          docker build \ 
+            -t splitwise/admin-panel:local \
+            ./admin-panel
+
+      - name: Import images into k3s
+        run: |
+          docker save splitwise/backend:local | k3s ctr images import -
+          docker save splitwise/admin-panel:local | k3s ctr images import -
+
+      - name: Deploy mail services
+        env: 
           DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/opt/offline-splitwise/backend' }}
         run: |
-          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_ROOT='$DEPLOY_ROOT' bash -s" <<'REMOTE'
-          set -euo pipefail
           cd "$DEPLOY_ROOT"
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main && break
-            if [ "$attempt" = "5" ]; then exit 1; fi
-            sleep $((attempt * 10))
-          done
-          git reset --hard origin/main
+          
+          docker compose --env-file .env.production up -d mailserver roundcube
 
-          flock /tmp/splitwise-deploy.lock bash -s <<'DEPLOY'
-          set -euo pipefail
-          docker compose --env-file .env.production up -d --build backend admin-panel
-          docker compose --env-file .env.production up -d --no-deps nginx
-          docker compose --env-file .env.production exec -T backend alembic upgrade head
-          DEPLOY
-          REMOTE
+      - name: Apply Kubernetes manifests
+        env: 
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/opt/offline-splitwise/backend' }}
+        run: |
+          cd "$DEPLOY_ROOT"
+          
+          kubectl apply -f deploy/k8s/namespace.yaml
+          kubectl apply -f deploy/k8s/configmap.yaml
+          kubectl apply -f deploy/k8s/secrets.yaml
+
+          kubectl apply -f deploy/k8s/postgres.yaml
+          kubectl apply -f deploy/k8s/backend.yaml
+          kubectl apply -f deploy/k8s/frontends.yaml
+          kubectl apply -f deploy/k8s/mail.yaml
+          kubectl apply -f deploy/k8s/postgres-backup.yaml
+
+      - name: Run database migrations
+        env: 
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/opt/offline-splitwise/backend' }}
+        run: |
+          cd "$DEPLOY_ROOT"
+          
+          kubectl delete job backend-migration \
+            -n splitwise \
+            --ignore-not-found
+
+          kubectl apply -f deploy/k8s/backend-migration-job.yaml
+          
+          kubectl wait \
+            --for=condition=complete \
+            job/backend-migration \
+            -n splitwise \
+            --timeout=180s
+
+      - name: Restart deployments
+        run: |
+          kubectl rollout restart deployment/backend -n splitwise
+          kubectl rollout restart deployment/admin-panel -n splitwise
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/backend -n splitwise --timeout=180s
+          kubectl rollout status deployment/admin-panel -n splitwise --timeout=180s
+      
