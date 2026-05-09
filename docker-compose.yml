@@ -102,6 +102,8 @@ services:
   roundcube:
     image: roundcube/roundcubemail:latest
     restart: unless-stopped
+    ports:
+      - "8080:80"
     environment:
       ROUNDCUBEMAIL_DEFAULT_HOST: ${ROUNDCUBEMAIL_DEFAULT_HOST:-ssl://mail.splitwise.ir}
       ROUNDCUBEMAIL_DEFAULT_PORT: ${ROUNDCUBEMAIL_DEFAULT_PORT:-993}
