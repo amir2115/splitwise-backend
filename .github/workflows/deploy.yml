@@ -60,7 +60,11 @@ jobs:
             "DEPLOY_ROOT='$DEPLOY_ROOT' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$DEPLOY_ROOT"
-          git fetch origin main
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main && break
+            if [ "$attempt" = "5" ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
           git reset --hard origin/main
 
           flock /tmp/splitwise-deploy.lock bash -s <<'DEPLOY'
