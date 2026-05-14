@@ -117,6 +117,7 @@ class GroupInviteResponse(TimestampedResponse):
 class ExpenseParticipantAmount(BaseModel):
     member_id: str
     amount: int = Field(ge=0)
+    weight: Optional[float] = None
 
 
 class ExpenseBase(BaseModel):
