@@ -225,3 +225,37 @@ def test_share_split_rounding_leftover_goes_to_heaviest_weight(client, seeded_gr
     amounts = [s["amount"] for s in response.json()["shares"]]
     assert sum(amounts) == 100
     assert sorted(amounts) == [33, 33, 34]
+
+
+def test_share_split_rounds_half_up_to_match_frontend(client, seeded_group):
+    """Backend uses half-up rounding (math.floor(x + 0.5)) so client-side
+    preview from Math.round matches what the server persists."""
+    group = seeded_group["group"]
+    alice, bob, _ = seeded_group["members"]
+    auth_headers = seeded_group["users"]["owner"]["headers"]
+
+    # total=5, weights=[1, 1]; perShare = 2.5; half-up rounds to 3 each.
+    # Sum = 6; leftover = -1; subtracted from the first share with max weight.
+    # Result: alice (first max) = 3 - 1 = 2; bob = 3
+    response = client.post(
+        "/api/v1/expenses",
+        headers=auth_headers,
+        json={
+            "group_id": group["id"],
+            "title": "Half-up",
+            "note": None,
+            "total_amount": 5,
+            "split_type": "SHARE",
+            "payers": [{"member_id": alice["id"], "amount": 5}],
+            "shares": [
+                {"member_id": alice["id"], "amount": 0, "weight": 1},
+                {"member_id": bob["id"], "amount": 0, "weight": 1},
+            ],
+        },
+    )
+    assert response.status_code == 201
+    shares = {item["member_id"]: item["amount"] for item in response.json()["shares"]}
+    assert sum(shares.values()) == 5
+    # Half-up: each rounds to 3, sum=6, leftover=-1 → alice (first max) absorbs it
+    assert shares[alice["id"]] == 2
+    assert shares[bob["id"]] == 3

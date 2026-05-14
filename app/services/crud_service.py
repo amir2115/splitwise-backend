@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
@@ -792,7 +793,7 @@ def _validate_expense_payload(
                 code="invalid_expense",
                 message="At least one share weight must be greater than zero",
             )
-        raw = [(mid, int(round(total_amount * w / total_weight))) for mid, w in weighted]
+        raw = [(mid, math.floor(total_amount * w / total_weight + 0.5)) for mid, w in weighted]
         diff = total_amount - sum(amt for _, amt in raw)
         if diff != 0:
             idx_max = max(range(len(weighted)), key=lambda i: weighted[i][1])
