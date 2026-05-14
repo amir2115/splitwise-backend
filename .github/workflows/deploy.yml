@@ -42,35 +42,118 @@ jobs:
     needs: [test-backend, test-admin-panel]
     runs-on: [self-hosted, Linux, X64]
     steps:
-      - name: Configure SSH
+      - uses: actions/checkout@v4
+      - name: Debug runner state
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          echo "===== WHOAMI ====="
+          whoami
+      
+          echo "===== PWD ====="
+          pwd
+      
+          echo "===== FILES ====="
+          ls -la
+      
+          echo "===== GITHUB_WORKSPACE ====="
+          echo "$GITHUB_WORKSPACE"
+      
+          echo "===== WORKSPACE FILES ====="
+          ls -la "$GITHUB_WORKSPACE"
+      
+          echo "===== FIND DOCKERFILES ====="
+          find "$GITHUB_WORKSPACE" -name Dockerfile
+      
+          echo "===== DISK ====="
+          df -h
+      
+          echo "===== DOCKER ====="
+          docker version
+      
+      - name: Build backend image
+        run: |
+          cd "$GITHUB_WORKSPACE"
+      
+          docker build \
+            --progress=plain \
+            -t splitwise/backend:local \
+            -f Dockerfile \
+            .
 
-      - name: Deploy changed services
+      - name: Build admin panel image
+        run: |
+          cd "$GITHUB_WORKSPACE"
+
+          docker build \
+            --progress=plain \
+            -t splitwise/admin-panel:local \
+            ./admin-panel
+
+      - name: Import images into k3s
+        run: |
+          docker save splitwise/backend:local | sudo k3s ctr images import -
+          docker save splitwise/admin-panel:local | sudo k3s ctr images import -
+
+      - name: Verify imported images
+        run: |
+          sudo k3s ctr images ls | grep splitwise
+
+      - name: Deploy mail services
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
           DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/opt/offline-splitwise/backend' }}
         run: |
-          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_ROOT='$DEPLOY_ROOT' bash -s" <<'REMOTE'
-          set -euo pipefail
           cd "$DEPLOY_ROOT"
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main && break
-            if [ "$attempt" = "5" ]; then exit 1; fi
-            sleep $((attempt * 10))
-          done
-          git reset --hard origin/main
 
-          flock /tmp/splitwise-deploy.lock bash -s <<'DEPLOY'
+          docker compose --env-file .env.production up -d mailserver roundcube
+
+      - name: Apply Kubernetes manifests
+        env:
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/opt/offline-splitwise/backend' }}
+        run: |
+          cd "$DEPLOY_ROOT"
+
+          kubectl apply -f deploy/k8s/namespace.yaml
+          kubectl apply -f deploy/k8s/configmap.yaml
+
+          kubectl apply -f deploy/k8s/postgres.yaml
+          kubectl apply -f deploy/k8s/backend.yaml
+          kubectl apply -f deploy/k8s/frontends.yaml
+          kubectl apply -f deploy/k8s/mail.yaml
+          kubectl apply -f deploy/k8s/postgres-backup.yaml
+
+      - name: Run database migrations
+        env:
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/opt/offline-splitwise/backend' }}
+        run: |
           set -euo pipefail
-          docker compose --env-file .env.production up -d --build backend admin-panel
-          docker compose --env-file .env.production up -d --no-deps nginx
-          docker compose --env-file .env.production exec -T backend alembic upgrade head
-          DEPLOY
-          REMOTE
+
+          cd "$DEPLOY_ROOT"
+
+          kubectl delete job backend-migration \
+            -n splitwise \
+            --ignore-not-found
+
+          kubectl apply -f deploy/k8s/backend-migration-job.yaml
+
+          kubectl wait \
+            --for=condition=complete \
+            job/backend-migration \
+            -n splitwise \
+            --timeout=180s || {
+              echo "===== MIGRATION LOGS ====="
+              kubectl logs job/backend-migration -n splitwise
+              exit 1
+            }
+
+      - name: Restart deployments
+        run: |
+          kubectl rollout restart deployment/backend -n splitwise
+          kubectl rollout restart deployment/admin-panel -n splitwise
+          kubectl rollout restart deployment/mailserver -n splitwise
+          kubectl rollout restart deployment/roundcube -n splitwise
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/backend -n splitwise --timeout=180s
+          kubectl rollout status deployment/admin-panel -n splitwise --timeout=180s
+          kubectl rollout status deployment/roundcube -n splitwise --timeout=180s
+      
