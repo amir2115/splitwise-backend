@@ -358,23 +358,53 @@ def get_runtime_settings(db: Session) -> AdminRuntimeSettingsResponse:
         sms_ir_invited_account_link_parameter_name=values.get("sms_ir_invited_account_link_parameter_name"),
         sms_ir_invited_account_group_name_parameter_name=values.get("sms_ir_invited_account_group_name_parameter_name"),
         web_app_base_url=values.get("web_app_base_url"),
+        support_email=values.get("support_email"),
+        support_url=values.get("support_url"),
+        twitter_url=values.get("twitter_url"),
+        instagram_url=values.get("instagram_url"),
+        telegram_url=values.get("telegram_url"),
+        linkedin_url=values.get("linkedin_url"),
+        enamad_url=values.get("enamad_url"),
+        pwa_url=values.get("pwa_url"),
+        bazaar_url=values.get("bazaar_url"),
+        myket_url=values.get("myket_url"),
+        apk_url=values.get("apk_url"),
+        footer_short_text=values.get("footer_short_text"),
+        contact_body=values.get("contact_body"),
     )
 
 
 def update_runtime_settings(db: Session, payload: AdminRuntimeSettingsUpdateRequest) -> AdminRuntimeSettingsResponse:
-    set_runtime_settings(
-        db,
-        {
-            "phone_verification_required": "true" if payload.phone_verification_required else None if payload.phone_verification_required is None else "false",
-            "sms_ir_api_key": payload.sms_ir_api_key,
-            "sms_ir_verify_template_id": payload.sms_ir_verify_template_id,
-            "sms_ir_verify_template_id_android": payload.sms_ir_verify_template_id_android,
-            "sms_ir_verify_parameter_name": payload.sms_ir_verify_parameter_name,
-            "sms_otp_bypass_enabled": "true" if payload.sms_otp_bypass_enabled else None if payload.sms_otp_bypass_enabled is None else "false",
-            "sms_ir_invited_account_template_id": payload.sms_ir_invited_account_template_id,
-            "sms_ir_invited_account_link_parameter_name": payload.sms_ir_invited_account_link_parameter_name,
-            "sms_ir_invited_account_group_name_parameter_name": payload.sms_ir_invited_account_group_name_parameter_name,
-            "web_app_base_url": payload.web_app_base_url,
-        },
-    )
+    values: dict[str, str | None] = {}
+    fields = payload.model_fields_set
+    if "phone_verification_required" in fields:
+        values["phone_verification_required"] = "true" if payload.phone_verification_required else "false"
+    if "sms_otp_bypass_enabled" in fields:
+        values["sms_otp_bypass_enabled"] = "true" if payload.sms_otp_bypass_enabled else "false"
+    for key in (
+        "sms_ir_api_key",
+        "sms_ir_verify_template_id",
+        "sms_ir_verify_template_id_android",
+        "sms_ir_verify_parameter_name",
+        "sms_ir_invited_account_template_id",
+        "sms_ir_invited_account_link_parameter_name",
+        "sms_ir_invited_account_group_name_parameter_name",
+        "web_app_base_url",
+        "support_email",
+        "support_url",
+        "twitter_url",
+        "instagram_url",
+        "telegram_url",
+        "linkedin_url",
+        "enamad_url",
+        "pwa_url",
+        "bazaar_url",
+        "myket_url",
+        "apk_url",
+        "footer_short_text",
+        "contact_body",
+    ):
+        if key in fields:
+            values[key] = getattr(payload, key)
+    set_runtime_settings(db, values)
     return get_runtime_settings(db)

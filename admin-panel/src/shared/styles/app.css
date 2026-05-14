@@ -249,6 +249,24 @@ a {
   gap: 2px;
 }
 
+.settings-section-title {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 18px 0 16px;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-section-title strong {
+  font-size: 16px;
+}
+
+.settings-section-title small {
+  color: var(--color-text-soft);
+  line-height: 1.7;
+}
+
 .filters-grid {
   display: grid;
   grid-template-columns: 2fr repeat(3, minmax(0, 1fr));

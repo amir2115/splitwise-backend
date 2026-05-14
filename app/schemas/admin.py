@@ -52,6 +52,19 @@ class AdminRuntimeSettingsResponse(BaseModel):
     sms_ir_invited_account_link_parameter_name: Optional[str]
     sms_ir_invited_account_group_name_parameter_name: Optional[str]
     web_app_base_url: Optional[str]
+    support_email: Optional[str]
+    support_url: Optional[str]
+    twitter_url: Optional[str]
+    instagram_url: Optional[str]
+    telegram_url: Optional[str]
+    linkedin_url: Optional[str]
+    enamad_url: Optional[str]
+    pwa_url: Optional[str]
+    bazaar_url: Optional[str]
+    myket_url: Optional[str]
+    apk_url: Optional[str]
+    footer_short_text: Optional[str]
+    contact_body: Optional[str]
 
 
 class AdminRuntimeSettingsUpdateRequest(BaseModel):
@@ -65,6 +78,35 @@ class AdminRuntimeSettingsUpdateRequest(BaseModel):
     sms_ir_invited_account_link_parameter_name: Optional[str] = None
     sms_ir_invited_account_group_name_parameter_name: Optional[str] = None
     web_app_base_url: Optional[str] = None
+    support_email: Optional[str] = None
+    support_url: Optional[str] = None
+    twitter_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    telegram_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    enamad_url: Optional[str] = None
+    pwa_url: Optional[str] = None
+    bazaar_url: Optional[str] = None
+    myket_url: Optional[str] = None
+    apk_url: Optional[str] = None
+    footer_short_text: Optional[str] = None
+    contact_body: Optional[str] = None
+
+
+class PublicSiteSettingsResponse(BaseModel):
+    support_email: Optional[str]
+    support_url: Optional[str]
+    twitter_url: Optional[str]
+    instagram_url: Optional[str]
+    telegram_url: Optional[str]
+    linkedin_url: Optional[str]
+    enamad_url: Optional[str]
+    pwa_url: Optional[str]
+    bazaar_url: Optional[str]
+    myket_url: Optional[str]
+    apk_url: Optional[str]
+    footer_short_text: Optional[str]
+    contact_body: Optional[str]
 
 
 class AdminUsersPagination(BaseModel):
