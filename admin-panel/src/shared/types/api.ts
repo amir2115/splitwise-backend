@@ -69,6 +69,19 @@ export interface AdminRuntimeSettingsResponse {
   sms_ir_invited_account_link_parameter_name: string | null
   sms_ir_invited_account_group_name_parameter_name: string | null
   web_app_base_url: string | null
+  support_email: string | null
+  support_url: string | null
+  twitter_url: string | null
+  instagram_url: string | null
+  telegram_url: string | null
+  linkedin_url: string | null
+  enamad_url: string | null
+  pwa_url: string | null
+  bazaar_url: string | null
+  myket_url: string | null
+  apk_url: string | null
+  footer_short_text: string | null
+  contact_body: string | null
 }
 
 export interface AdminRuntimeSettingsUpdateRequest {
@@ -82,4 +95,17 @@ export interface AdminRuntimeSettingsUpdateRequest {
   sms_ir_invited_account_link_parameter_name?: string | null
   sms_ir_invited_account_group_name_parameter_name?: string | null
   web_app_base_url?: string | null
+  support_email?: string | null
+  support_url?: string | null
+  twitter_url?: string | null
+  instagram_url?: string | null
+  telegram_url?: string | null
+  linkedin_url?: string | null
+  enamad_url?: string | null
+  pwa_url?: string | null
+  bazaar_url?: string | null
+  myket_url?: string | null
+  apk_url?: string | null
+  footer_short_text?: string | null
+  contact_body?: string | null
 }

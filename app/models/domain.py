@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,6 +14,7 @@ from app.models.mixins import OwnedByUserMixin, SoftDeleteMixin, TimestampMixin,
 class SplitType(str, Enum):
     EQUAL = "EQUAL"
     EXACT = "EXACT"
+    SHARE = "SHARE"
 
 
 class MembershipStatus(str, Enum):
@@ -270,6 +271,7 @@ class ExpenseShare(Base):
     expense_id: Mapped[str] = mapped_column(String(36), ForeignKey("expenses.id", ondelete="CASCADE"), primary_key=True)
     member_id: Mapped[str] = mapped_column(String(36), ForeignKey("members.id", ondelete="CASCADE"), primary_key=True)
     amount_owed: Mapped[int] = mapped_column(Integer, nullable=False)
+    weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     expense = relationship("Expense", back_populates="shares")
     member = relationship("Member")

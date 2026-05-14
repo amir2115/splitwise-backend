@@ -438,3 +438,93 @@ def test_admin_runtime_settings_can_toggle_phone_verification_required(client):
     )
     assert disabled.status_code == 200
     assert disabled.json()["phone_verification_required"] is False
+
+
+def test_admin_runtime_settings_can_manage_public_site_settings(client):
+    login = client.post(
+        "/api/v1/admin/auth/login",
+        json={"username": "panel_admin", "password": "super-secret"},
+    ).json()
+    headers = {"Authorization": f"Bearer {login['access_token']}"}
+
+    updated = client.patch(
+        "/api/v1/admin/settings/runtime",
+        headers=headers,
+        json={
+            "support_email": "hello@splitwise.ir",
+            "support_url": "mailto:hello@splitwise.ir",
+            "twitter_url": "https://x.com/dongino",
+            "instagram_url": "",
+            "telegram_url": "https://t.me/dongino",
+            "linkedin_url": None,
+            "enamad_url": "https://trustseal.enamad.ir/example",
+            "pwa_url": "https://pwa.splitwise.ir",
+            "bazaar_url": "https://cafebazaar.ir/app/com.encer.offlinesplitwise",
+            "myket_url": "https://myket.ir/app/com.encer.offlinesplitwise",
+            "apk_url": "https://splitwise.ir/files/app.apk",
+            "footer_short_text": "متن فوتر تست",
+            "contact_body": "متن تماس تست",
+        },
+    )
+
+    assert updated.status_code == 200
+    payload = updated.json()
+    assert payload["support_email"] == "hello@splitwise.ir"
+    assert payload["twitter_url"] == "https://x.com/dongino"
+    assert payload["instagram_url"] is None
+    assert payload["telegram_url"] == "https://t.me/dongino"
+    assert payload["footer_short_text"] == "متن فوتر تست"
+
+
+def test_public_site_settings_exposes_only_public_values(client):
+    login = client.post(
+        "/api/v1/admin/auth/login",
+        json={"username": "panel_admin", "password": "super-secret"},
+    ).json()
+    headers = {"Authorization": f"Bearer {login['access_token']}"}
+
+    response = client.patch(
+        "/api/v1/admin/settings/runtime",
+        headers=headers,
+        json={
+            "sms_ir_api_key": "secret-sms-key",
+            "twitter_url": "https://x.com/dongino",
+            "support_email": "support@splitwise.ir",
+        },
+    )
+    assert response.status_code == 200
+
+    public = client.get("/api/v1/site-settings")
+
+    assert public.status_code == 200
+    payload = public.json()
+    assert payload["twitter_url"] == "https://x.com/dongino"
+    assert payload["support_email"] == "support@splitwise.ir"
+    assert "sms_ir_api_key" not in payload
+    assert "sms_ir_api_key_masked" not in payload
+
+
+def test_admin_runtime_settings_patch_preserves_unsent_fields(client):
+    login = client.post(
+        "/api/v1/admin/auth/login",
+        json={"username": "panel_admin", "password": "super-secret"},
+    ).json()
+    headers = {"Authorization": f"Bearer {login['access_token']}"}
+
+    first = client.patch(
+        "/api/v1/admin/settings/runtime",
+        headers=headers,
+        json={"support_email": "hello@splitwise.ir", "twitter_url": "https://x.com/dongino"},
+    )
+    assert first.status_code == 200
+
+    second = client.patch(
+        "/api/v1/admin/settings/runtime",
+        headers=headers,
+        json={"support_email": "support@splitwise.ir"},
+    )
+
+    assert second.status_code == 200
+    payload = second.json()
+    assert payload["support_email"] == "support@splitwise.ir"
+    assert payload["twitter_url"] == "https://x.com/dongino"

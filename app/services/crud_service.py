@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
@@ -779,6 +780,31 @@ def _validate_expense_payload(
         normalized_shares = _normalize_equal_shares(total_amount, [item.member_id for item in shares])
         return payers, normalized_shares
 
+    if split_type == SplitType.SHARE:
+        weighted = [(item.member_id, float(item.weight or 0.0)) for item in shares]
+        if any(w < 0 for _, w in weighted):
+            raise DomainError(
+                code="invalid_expense",
+                message="Share weights cannot be negative",
+            )
+        total_weight = sum(w for _, w in weighted)
+        if total_weight <= 0:
+            raise DomainError(
+                code="invalid_expense",
+                message="At least one share weight must be greater than zero",
+            )
+        raw = [(mid, math.floor(total_amount * w / total_weight + 0.5)) for mid, w in weighted]
+        diff = total_amount - sum(amt for _, amt in raw)
+        if diff != 0:
+            idx_max = max(range(len(weighted)), key=lambda i: weighted[i][1])
+            mid, amt = raw[idx_max]
+            raw[idx_max] = (mid, amt + diff)
+        normalized = [
+            ExpenseParticipantAmount(member_id=mid, amount=amt, weight=w)
+            for (mid, amt), (_, w) in zip(raw, weighted)
+        ]
+        return payers, normalized
+
     if sum(item.amount for item in shares) != total_amount:
         raise DomainError(code="invalid_expense", message="Share amounts must sum to total amount for EXACT splits")
     return payers, shares
@@ -791,7 +817,13 @@ def _apply_expense_children(expense: Expense, payers: list[ExpenseParticipantAmo
         ExpensePayer(expense_id=expense.id, member_id=item.member_id, amount_paid=item.amount) for item in payers
     )
     expense.shares.extend(
-        ExpenseShare(expense_id=expense.id, member_id=item.member_id, amount_owed=item.amount) for item in shares
+        ExpenseShare(
+            expense_id=expense.id,
+            member_id=item.member_id,
+            amount_owed=item.amount,
+            weight=item.weight,
+        )
+        for item in shares
     )
 
 
@@ -855,7 +887,7 @@ def update_expense(db: Session, user: User, expense_id: str, payload: ExpenseUpd
         else [ExpenseParticipantAmount(member_id=item.member_id, amount=item.amount_paid) for item in expense.payers],
         shares=payload.shares
         if payload.shares is not None
-        else [ExpenseParticipantAmount(member_id=item.member_id, amount=item.amount_owed) for item in expense.shares],
+        else [ExpenseParticipantAmount(member_id=item.member_id, amount=item.amount_owed, weight=item.weight) for item in expense.shares],
         updated_at=payload.updated_at or utcnow(),
     )
     payers, shares = _validate_expense_payload(db, user, merged, group_id=expense.group_id)
@@ -1043,7 +1075,7 @@ def serialize_expense(expense: Expense) -> ExpenseResponse:
         deleted_at=expense.deleted_at,
         user_id=expense.user_id,
         payers=[ExpenseParticipantAmount(member_id=item.member_id, amount=item.amount_paid) for item in expense.payers],
-        shares=[ExpenseParticipantAmount(member_id=item.member_id, amount=item.amount_owed) for item in expense.shares],
+        shares=[ExpenseParticipantAmount(member_id=item.member_id, amount=item.amount_owed, weight=item.weight) for item in expense.shares],
     )
 
 

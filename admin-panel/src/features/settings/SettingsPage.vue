@@ -24,7 +24,58 @@ const form = ref<AdminRuntimeSettingsUpdateRequest>({
   sms_ir_invited_account_link_parameter_name: '',
   sms_ir_invited_account_group_name_parameter_name: '',
   web_app_base_url: '',
+  support_email: '',
+  support_url: '',
+  twitter_url: '',
+  instagram_url: '',
+  telegram_url: '',
+  linkedin_url: '',
+  enamad_url: '',
+  pwa_url: '',
+  bazaar_url: '',
+  myket_url: '',
+  apk_url: '',
+  footer_short_text: '',
+  contact_body: '',
 })
+
+const textSettingKeys = [
+  'sms_ir_api_key',
+  'sms_ir_verify_template_id',
+  'sms_ir_verify_template_id_android',
+  'sms_ir_verify_parameter_name',
+  'sms_ir_invited_account_template_id',
+  'sms_ir_invited_account_link_parameter_name',
+  'sms_ir_invited_account_group_name_parameter_name',
+  'web_app_base_url',
+  'support_email',
+  'support_url',
+  'twitter_url',
+  'instagram_url',
+  'telegram_url',
+  'linkedin_url',
+  'enamad_url',
+  'pwa_url',
+  'bazaar_url',
+  'myket_url',
+  'apk_url',
+  'footer_short_text',
+  'contact_body',
+] as const
+
+function emptyStringsToNull(payload: AdminRuntimeSettingsUpdateRequest): AdminRuntimeSettingsUpdateRequest {
+  const normalized = { ...payload }
+  for (const key of textSettingKeys) {
+    const value = normalized[key]
+    if (typeof value === 'string' && !value.trim()) {
+      normalized[key] = null
+    }
+  }
+  if (!payload.sms_ir_api_key?.trim()) {
+    delete normalized.sms_ir_api_key
+  }
+  return normalized
+}
 
 async function fetchSettings() {
   loading.value = true
@@ -47,6 +98,19 @@ async function fetchSettings() {
       sms_ir_invited_account_link_parameter_name: response.sms_ir_invited_account_link_parameter_name ?? '',
       sms_ir_invited_account_group_name_parameter_name: response.sms_ir_invited_account_group_name_parameter_name ?? '',
       web_app_base_url: response.web_app_base_url ?? '',
+      support_email: response.support_email ?? '',
+      support_url: response.support_url ?? '',
+      twitter_url: response.twitter_url ?? '',
+      instagram_url: response.instagram_url ?? '',
+      telegram_url: response.telegram_url ?? '',
+      linkedin_url: response.linkedin_url ?? '',
+      enamad_url: response.enamad_url ?? '',
+      pwa_url: response.pwa_url ?? '',
+      bazaar_url: response.bazaar_url ?? '',
+      myket_url: response.myket_url ?? '',
+      apk_url: response.apk_url ?? '',
+      footer_short_text: response.footer_short_text ?? '',
+      contact_body: response.contact_body ?? '',
     }
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
@@ -69,7 +133,7 @@ async function saveSettings() {
       '/admin/settings/runtime',
       {
         method: 'PATCH',
-        body: JSON.stringify(form.value),
+        body: JSON.stringify(emptyStringsToNull(form.value)),
       },
       adminAuthStore.accessToken,
     )
@@ -183,6 +247,76 @@ function logout() {
         <div class="field">
           <span>WEB_APP_BASE_URL</span>
           <input v-model.trim="form.web_app_base_url" type="text" placeholder="https://pwa.splitwise.ir" />
+        </div>
+
+        <div class="settings-section-title">
+          <strong>تنظیمات عمومی سایت</strong>
+          <small>این فیلدها در landing عمومی استفاده می‌شوند. مقدار خالی در UI نمایش داده نمی‌شود.</small>
+        </div>
+
+        <div class="field">
+          <span>SUPPORT_EMAIL</span>
+          <input v-model.trim="form.support_email" type="email" placeholder="support@splitwise.ir" />
+        </div>
+
+        <div class="field">
+          <span>SUPPORT_URL</span>
+          <input v-model.trim="form.support_url" type="text" placeholder="mailto:support@splitwise.ir" />
+        </div>
+
+        <div class="field">
+          <span>TWITTER_URL</span>
+          <input v-model.trim="form.twitter_url" type="url" placeholder="https://x.com/..." />
+        </div>
+
+        <div class="field">
+          <span>INSTAGRAM_URL</span>
+          <input v-model.trim="form.instagram_url" type="url" placeholder="https://instagram.com/..." />
+        </div>
+
+        <div class="field">
+          <span>TELEGRAM_URL</span>
+          <input v-model.trim="form.telegram_url" type="url" placeholder="https://t.me/..." />
+        </div>
+
+        <div class="field">
+          <span>LINKEDIN_URL</span>
+          <input v-model.trim="form.linkedin_url" type="url" placeholder="https://linkedin.com/company/..." />
+        </div>
+
+        <div class="field">
+          <span>ENAMAD_URL</span>
+          <input v-model.trim="form.enamad_url" type="url" placeholder="https://trustseal.enamad.ir/..." />
+        </div>
+
+        <div class="field">
+          <span>PWA_URL</span>
+          <input v-model.trim="form.pwa_url" type="url" placeholder="https://pwa.splitwise.ir" />
+        </div>
+
+        <div class="field">
+          <span>BAZAAR_URL</span>
+          <input v-model.trim="form.bazaar_url" type="url" placeholder="https://cafebazaar.ir/app/..." />
+        </div>
+
+        <div class="field">
+          <span>MYKET_URL</span>
+          <input v-model.trim="form.myket_url" type="url" placeholder="https://myket.ir/app/..." />
+        </div>
+
+        <div class="field">
+          <span>APK_URL</span>
+          <input v-model.trim="form.apk_url" type="url" placeholder="https://splitwise.ir/files/app.apk" />
+        </div>
+
+        <div class="field">
+          <span>FOOTER_SHORT_TEXT</span>
+          <input v-model.trim="form.footer_short_text" type="text" placeholder="مدیریت هزینه‌های گروهی، ساده و شفاف." />
+        </div>
+
+        <div class="field">
+          <span>CONTACT_BODY</span>
+          <input v-model.trim="form.contact_body" type="text" placeholder="متن کوتاه بخش تماس" />
         </div>
 
         <p v-if="successMessage" class="field-success">{{ successMessage }}</p>
