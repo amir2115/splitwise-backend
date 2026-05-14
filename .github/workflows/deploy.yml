@@ -113,6 +113,11 @@ jobs:
 
           kubectl apply -f deploy/k8s/namespace.yaml
           kubectl apply -f deploy/k8s/configmap.yaml
+          kubectl create secret generic splitwise-runtime-secret \
+            --namespace splitwise \
+            --from-env-file .env \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
 
           kubectl apply -f deploy/k8s/postgres.yaml
           kubectl apply -f deploy/k8s/backend.yaml
@@ -156,4 +161,19 @@ jobs:
           kubectl rollout status deployment/backend -n splitwise --timeout=180s
           kubectl rollout status deployment/admin-panel -n splitwise --timeout=180s
           kubectl rollout status deployment/roundcube -n splitwise --timeout=180s
+
+      - name: Cleanup Docker build cache
+        if: always()
+        run: |
+          set +e
+
+          echo "===== DISK BEFORE CLEANUP ====="
+          df -h / /mnt/data || true
+
+          docker builder prune -af || true
+          docker image prune -af || true
+          docker container prune -f || true
+
+          echo "===== DISK AFTER CLEANUP ====="
+          df -h / /mnt/data || true
       
