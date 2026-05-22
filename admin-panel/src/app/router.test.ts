@@ -22,7 +22,7 @@ describe('admin router guards', () => {
 
   it('redirects guests away from protected users page', async () => {
     const { router } = await import('@/app/router')
-    await router.push('/users')
+    await router.push('/articles')
     expect(router.currentRoute.value.fullPath).toBe('/login')
   }, 15000)
 
@@ -31,6 +31,6 @@ describe('admin router guards', () => {
     const { router } = await import('@/app/router')
     await router.replace('/')
     await router.push('/login')
-    expect(router.currentRoute.value.fullPath).toBe('/users')
+    expect(router.currentRoute.value.fullPath).toBe('/articles')
   }, 15000)
 })

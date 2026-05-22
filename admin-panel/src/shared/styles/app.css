@@ -6,6 +6,83 @@ a {
   color: inherit;
 }
 
+.admin-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.admin-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 22px;
+  border-left: 1px solid var(--color-border);
+  background: rgba(7, 16, 25, 0.84);
+  backdrop-filter: blur(18px);
+}
+
+.admin-sidebar__brand,
+.admin-sidebar__footer,
+.admin-sidebar__link {
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.admin-sidebar__brand {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+
+.admin-sidebar__brand span,
+.admin-sidebar__footer span,
+.admin-sidebar__link span {
+  color: var(--color-text-soft);
+  font-size: 12px;
+}
+
+.admin-sidebar__brand strong {
+  font-size: 24px;
+}
+
+.admin-sidebar__nav {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-sidebar__link {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.admin-sidebar__link.router-link-active {
+  border-color: var(--color-primary);
+  background: rgba(92, 200, 255, 0.12);
+}
+
+.admin-sidebar__footer {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+  padding: 14px;
+}
+
+.admin-sidebar__footer .ghost-button {
+  width: 100%;
+}
+
+.admin-shell__content {
+  min-width: 0;
+}
+
 .auth-layout,
 .dashboard-shell {
   width: min(calc(100% - 32px), var(--page-width));
@@ -515,6 +592,32 @@ a {
 }
 
 @media (max-width: 760px) {
+  .admin-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-sidebar {
+    position: static;
+    height: auto;
+    padding: 14px;
+    border-left: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .admin-sidebar__brand,
+  .admin-sidebar__footer {
+    display: none;
+  }
+
+  .admin-sidebar__nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-sidebar__link {
+    min-height: 76px;
+    justify-content: center;
+  }
+
   .auth-layout,
   .dashboard-shell {
     width: min(calc(100% - 24px), var(--page-width));

@@ -40,6 +40,98 @@ export interface AdminUserListResponse {
   }
 }
 
+export interface ArticleCategoryResponse {
+  slug: string
+  name: string
+  description: string | null
+  display_order: number
+  count: number | null
+}
+
+export interface ArticleAuthorResponse {
+  slug: string
+  name: string
+  role: string | null
+  bio: string | null
+  avatar_url: string | null
+}
+
+export interface ArticleSeoPayload {
+  meta_title?: string | null
+  meta_description?: string | null
+  canonical_url?: string | null
+  og_image_url?: string | null
+}
+
+export interface ArticlePayload {
+  slug: string
+  status: 'draft' | 'published' | 'archived'
+  category_slug: string
+  author_slug: string
+  title: string
+  summary: string
+  tldr: string
+  hero_icon: string
+  hero_image_url?: string | null
+  reading_minutes: number
+  published_at?: string | null
+  audience: string[]
+  body: unknown[]
+  related_slugs: string[]
+  seo: ArticleSeoPayload
+}
+
+export interface ArticleListItem {
+  id: string
+  slug: string
+  title: string
+  summary: string
+  category: ArticleCategoryResponse
+  author: ArticleAuthorResponse
+  reading_minutes: number
+  hero_icon: string
+  hero_image_url: string | null
+  status: 'draft' | 'published' | 'archived'
+  published_at: string | null
+  updated_at: string
+}
+
+export interface ArticleDetailResponse extends ArticleListItem {
+  tldr: string
+  body: unknown[]
+  toc: Array<{ id: string; title: string }>
+  audience: string[]
+  related: Array<{
+    slug: string
+    title: string
+    excerpt: string
+    category: string
+    reading_minutes: number
+  }>
+  seo: ArticleSeoPayload
+}
+
+export interface AdminArticleListResponse {
+  items: ArticleListItem[]
+  pagination: {
+    page: number
+    page_size: number
+    total: number
+  }
+  summary: {
+    total_articles: number
+    draft_count: number
+    published_count: number
+    archived_count: number
+  }
+}
+
+export interface ArticleImageUploadResponse {
+  filename: string
+  stored_path: string
+  hero_image_url: string
+}
+
 export interface AdminUserListFilters {
   search: string
   must_change_password: 'all' | 'true' | 'false'

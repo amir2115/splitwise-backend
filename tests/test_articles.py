@@ -129,6 +129,52 @@ def test_public_list_and_sitemap_include_only_published_articles(client: TestCli
     assert [item["slug"] for item in sitemap.json()["items"]] == ["published-one"]
 
 
+def test_admin_list_articles_includes_all_statuses_and_filters(client: TestClient) -> None:
+    headers = admin_headers(client)
+    create_category_and_author(client, headers)
+    published = client.post("/api/v1/admin/articles", headers=headers, json=article_payload(slug="published-one", status="published"))
+    draft = client.post("/api/v1/admin/articles", headers=headers, json=article_payload(slug="draft-one", status="draft"))
+    archived = client.post("/api/v1/admin/articles", headers=headers, json=article_payload(slug="archived-one", status="archived"))
+    assert published.status_code == 201
+    assert draft.status_code == 201
+    assert archived.status_code == 201
+
+    listing = client.get("/api/v1/admin/articles", headers=headers)
+    assert listing.status_code == 200
+    payload = listing.json()
+    assert {item["slug"] for item in payload["items"]} == {"published-one", "draft-one", "archived-one"}
+    assert payload["pagination"] == {"page": 1, "page_size": 20, "total": 3}
+    assert payload["summary"]["published_count"] == 1
+    assert payload["summary"]["draft_count"] == 1
+    assert payload["summary"]["archived_count"] == 1
+
+    filtered = client.get("/api/v1/admin/articles?status=draft&search=draft", headers=headers)
+    assert filtered.status_code == 200
+    assert [item["slug"] for item in filtered.json()["items"]] == ["draft-one"]
+
+
+def test_admin_can_fetch_article_by_id_and_slug_for_update_flow(client: TestClient) -> None:
+    headers = admin_headers(client)
+    create_category_and_author(client, headers)
+    created = client.post("/api/v1/admin/articles", headers=headers, json=article_payload(slug="slug-update-flow"))
+    assert created.status_code == 201
+    article_id = created.json()["id"]
+
+    by_id = client.get(f"/api/v1/admin/articles/{article_id}", headers=headers)
+    assert by_id.status_code == 200
+    assert by_id.json()["slug"] == "slug-update-flow"
+
+    by_slug = client.get("/api/v1/admin/articles/slug/slug-update-flow", headers=headers)
+    assert by_slug.status_code == 200
+    assert by_slug.json()["id"] == article_id
+
+    updated_payload = article_payload(slug="slug-update-flow")
+    updated_payload["title"] = "عنوان به‌روزشده"
+    updated = client.patch(f"/api/v1/admin/articles/{article_id}", headers=headers, json=updated_payload)
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "عنوان به‌روزشده"
+
+
 def test_related_articles_are_expanded_in_detail(client: TestClient) -> None:
     headers = admin_headers(client)
     create_category_and_author(client, headers)

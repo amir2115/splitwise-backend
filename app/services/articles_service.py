@@ -19,6 +19,9 @@ from app.schemas.articles import (
     ArticleCategoryResponse,
     ArticleDetailResponse,
     ArticleImageUploadResponse,
+    AdminArticleListPagination,
+    AdminArticleListResponse,
+    AdminArticleListSummary,
     ArticleListItem,
     ArticleListResponse,
     ArticlePatchRequest,
@@ -370,6 +373,68 @@ def _article_detail(db: Session, article: Article) -> ArticleDetailResponse:
 
 def get_admin_article(db: Session, article_id: str) -> ArticleDetailResponse:
     return _article_detail(db, _find_article_by_id(db, article_id))
+
+
+def get_admin_article_by_slug(db: Session, slug: str) -> ArticleDetailResponse:
+    article = db.scalar(
+        select(Article)
+        .options(joinedload(Article.category), joinedload(Article.author))
+        .where(Article.slug == slug)
+    )
+    if not article:
+        raise DomainError(code="article_not_found", message="Article not found", status_code=status.HTTP_404_NOT_FOUND)
+    return _article_detail(db, article)
+
+
+def list_admin_articles(
+    db: Session,
+    *,
+    search: str | None,
+    status_filter: str | None,
+    category: str | None,
+    page: int,
+    page_size: int,
+) -> AdminArticleListResponse:
+    query = select(Article).options(joinedload(Article.category), joinedload(Article.author))
+    count_query = select(func.count(Article.id))
+
+    filters = []
+    if search:
+        pattern = f"%{search.strip()}%"
+        filters.append(Article.slug.ilike(pattern) | Article.title.ilike(pattern) | Article.summary.ilike(pattern))
+    if status_filter:
+        filters.append(Article.status == ArticleStatus(status_filter))
+    if category:
+        query = query.join(Article.category)
+        count_query = count_query.join(Article.category)
+        filters.append(ArticleCategory.slug == category)
+
+    for condition in filters:
+        query = query.where(condition)
+        count_query = count_query.where(condition)
+
+    total = db.scalar(count_query) or 0
+    offset = (page - 1) * page_size
+    rows = list(
+        db.scalars(
+            query.order_by(Article.updated_at.desc(), Article.published_at.desc().nullslast())
+            .offset(offset)
+            .limit(page_size)
+        ).all()
+    )
+    status_counts = dict(
+        db.execute(select(Article.status, func.count(Article.id)).group_by(Article.status)).all()
+    )
+    return AdminArticleListResponse(
+        items=[_list_item(article) for article in rows],
+        pagination=AdminArticleListPagination(page=page, page_size=page_size, total=int(total)),
+        summary=AdminArticleListSummary(
+            total_articles=sum(int(count) for count in status_counts.values()),
+            draft_count=int(status_counts.get(ArticleStatus.DRAFT, 0)),
+            published_count=int(status_counts.get(ArticleStatus.PUBLISHED, 0)),
+            archived_count=int(status_counts.get(ArticleStatus.ARCHIVED, 0)),
+        ),
+    )
 
 
 def get_public_article(db: Session, slug: str) -> ArticleDetailResponse:

@@ -316,6 +316,25 @@ class ArticleListResponse(BaseModel):
     next_cursor: Optional[str]
 
 
+class AdminArticleListPagination(BaseModel):
+    page: int
+    page_size: int
+    total: int
+
+
+class AdminArticleListSummary(BaseModel):
+    total_articles: int
+    draft_count: int
+    published_count: int
+    archived_count: int
+
+
+class AdminArticleListResponse(BaseModel):
+    items: list[ArticleListItem]
+    pagination: AdminArticleListPagination
+    summary: AdminArticleListSummary
+
+
 class ArticleDetailResponse(ArticleListItem):
     tldr: str
     body: list[ContentBlock]
