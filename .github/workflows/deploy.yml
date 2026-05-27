@@ -41,6 +41,7 @@ jobs:
   deploy:
     needs: [test-backend, test-admin-panel]
     runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Debug runner state
@@ -164,15 +165,16 @@ jobs:
 
       - name: Cleanup Docker build cache
         if: always()
+        timeout-minutes: 3
         run: |
           set +e
 
           echo "===== DISK BEFORE CLEANUP ====="
           df -h / /mnt/data || true
 
-          docker builder prune -af || true
-          docker image prune -af || true
-          docker container prune -f || true
+          timeout 90s docker builder prune -af --filter "until=24h" || true
+          timeout 90s docker image prune -af --filter "until=24h" || true
+          timeout 30s docker container prune -f || true
 
           echo "===== DISK AFTER CLEANUP ====="
           df -h / /mnt/data || true
