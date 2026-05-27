@@ -100,6 +100,32 @@ describe('ArticlesPage', () => {
     expect(mocks.apiRequest).not.toHaveBeenCalled()
   })
 
+  it('rejects comparison options that do not match the backend schema before submit', async () => {
+    const wrapper = mount(ArticlesPage)
+    await flushPromises()
+    mocks.apiRequest.mockClear()
+
+    await wrapper.find('textarea').setValue(JSON.stringify({
+      ...articlePayload,
+      body: [
+        ...articlePayload.body,
+        {
+          kind: 'comparison',
+          title: 'مقایسه روش‌ها',
+          options: [
+            { title: 'بدون ثبت هزینه', body: 'تسویه سخت می‌شود.' },
+            { title: 'ثبت شفاف', body: 'تسویه سریع‌تر انجام می‌شود.' },
+          ],
+        },
+      ],
+    }))
+    await wrapper.find('button.primary-button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('comparison option باید label, pros و cons داشته باشد')
+    expect(mocks.apiRequest).not.toHaveBeenCalled()
+  })
+
   it('creates a new article when slug does not exist', async () => {
     mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
       if (path.startsWith('/admin/articles?')) return Promise.resolve(listResponse)

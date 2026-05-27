@@ -24,6 +24,7 @@ const listErrorMessage = ref('')
 const response = ref<AdminArticleListResponse | null>(null)
 const selectedImage = ref<File | null>(null)
 const isDraggingImage = ref(false)
+const imageDragDepth = ref(0)
 const search = ref('')
 const statusFilter = ref<'all' | 'draft' | 'published' | 'archived'>('all')
 const categoryFilter = ref('')
@@ -126,21 +127,97 @@ function parseArticleJson(raw: string): { payload: ArticlePayload | null; errors
       }
       if ('tone' in item) errors.push(`body[${index}] از tone استفاده کرده؛ مقدار درست callout.variant است.`)
       if ('q' in item || 'a' in item) errors.push(`body[${index}] FAQ باید question/answer داشته باشد، نه q/a.`)
-      if (item.kind === 'heading' && typeof item.id !== 'string') errors.push(`body[${index}] heading باید id داشته باشد.`)
-      if (item.kind === 'prose' && !Array.isArray(item.paragraphs)) errors.push(`body[${index}] prose باید paragraphs داشته باشد.`)
-      if (item.kind === 'callout' && (typeof item.variant !== 'string' || typeof item.body !== 'string')) {
-        errors.push(`body[${index}] callout باید variant و body داشته باشد.`)
+
+      if (item.kind === 'heading') {
+        if (!isFilledString(item.id)) errors.push(`body[${index}] heading باید id داشته باشد.`)
+        if (!isFilledString(item.text)) errors.push(`body[${index}] heading باید text داشته باشد.`)
       }
-      if (item.kind === 'scenario' && !Array.isArray(item.rows)) errors.push(`body[${index}] scenario باید rows داشته باشد.`)
-      if (item.kind === 'steps' && !Array.isArray(item.steps)) errors.push(`body[${index}] steps باید steps داشته باشد، نه items.`)
-      if (item.kind === 'comparison' && !Array.isArray(item.options)) errors.push(`body[${index}] comparison باید options داشته باشد.`)
+      if (item.kind === 'prose') {
+        if (!Array.isArray(item.paragraphs) || item.paragraphs.length === 0) {
+          errors.push(`body[${index}] prose باید paragraphs غیرخالی داشته باشد.`)
+        }
+      }
+      if (item.kind === 'callout') {
+        if (!['tip', 'warning', 'note', 'highlight'].includes(String(item.variant)) || !isFilledString(item.body)) {
+          errors.push(`body[${index}] callout باید variant معتبر و body داشته باشد.`)
+        }
+      }
+      if (item.kind === 'scenario') {
+        if (!Array.isArray(item.rows) || item.rows.length === 0) {
+          errors.push(`body[${index}] scenario باید rows غیرخالی داشته باشد.`)
+        } else {
+          item.rows.forEach((row, rowIndex) => {
+            if (!isRecord(row) || !isFilledString(row.label) || !isFilledString(row.value)) {
+              errors.push(`body[${index}].rows[${rowIndex}] باید label و value داشته باشد.`)
+            }
+          })
+        }
+      }
+      if (item.kind === 'steps') {
+        if (!Array.isArray(item.steps) || item.steps.length === 0) {
+          errors.push(`body[${index}] steps باید steps غیرخالی داشته باشد، نه items.`)
+        } else {
+          item.steps.forEach((step, stepIndex) => {
+            if (!isRecord(step) || !isFilledString(step.title) || !isFilledString(step.body)) {
+              errors.push(`body[${index}].steps[${stepIndex}] باید title و body داشته باشد.`)
+            }
+          })
+        }
+      }
+      if (item.kind === 'comparison') {
+        if (!Array.isArray(item.options) || item.options.length === 0) {
+          errors.push(`body[${index}] comparison باید options غیرخالی داشته باشد.`)
+        } else {
+          item.options.forEach((option, optionIndex) => {
+            if (!isRecord(option)) {
+              errors.push(`body[${index}].options[${optionIndex}] باید object باشد.`)
+              return
+            }
+            if ('title' in option || 'body' in option) {
+              errors.push(`body[${index}].options[${optionIndex}] از title/body استفاده کرده؛ comparison option باید label, pros و cons داشته باشد.`)
+            }
+            if (!isFilledString(option.label)) {
+              errors.push(`body[${index}].options[${optionIndex}].label الزامی است.`)
+            }
+            if (!Array.isArray(option.pros) || option.pros.length === 0) {
+              errors.push(`body[${index}].options[${optionIndex}].pros باید آرایه غیرخالی باشد.`)
+            }
+            if ('cons' in option && !Array.isArray(option.cons)) {
+              errors.push(`body[${index}].options[${optionIndex}].cons باید آرایه باشد.`)
+            }
+          })
+        }
+      }
       if (item.kind === 'inline-cta' && (typeof item.title !== 'string' || !item.primary)) {
         errors.push(`body[${index}] inline-cta باید title و primary داشته باشد.`)
       }
-      if (item.kind === 'faq' && !Array.isArray(item.items)) errors.push(`body[${index}] faq باید items داشته باشد.`)
+      if (item.kind === 'inline-cta' && isRecord(item.primary)) {
+        if (!isFilledString(item.primary.label) || !isFilledString(item.primary.href)) {
+          errors.push(`body[${index}] inline-cta.primary باید label و href داشته باشد.`)
+        }
+      }
+      if (item.kind === 'faq') {
+        if (!Array.isArray(item.items) || item.items.length === 0) {
+          errors.push(`body[${index}] faq باید items غیرخالی داشته باشد.`)
+        } else {
+          item.items.forEach((faqItem, faqIndex) => {
+            if (!isRecord(faqItem) || !isFilledString(faqItem.question) || !isFilledString(faqItem.answer)) {
+              errors.push(`body[${index}].items[${faqIndex}] باید question و answer داشته باشد.`)
+            }
+          })
+        }
+      }
     })
   }
   return { payload: errors.length ? null : (payload as ArticlePayload), errors }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isFilledString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
 }
 
 function buildPayload(): ArticlePayload {
@@ -259,7 +336,12 @@ async function findExistingArticle(slug: string): Promise<ArticleDetailResponse 
 
 function selectImage(file: File | null) {
   if (!file) return
+  if (!/\.(png|webp|jpe?g)$/i.test(file.name) && !['image/png', 'image/webp', 'image/jpeg'].includes(file.type)) {
+    errorMessage.value = 'فرمت تصویر باید PNG، WebP یا JPG باشد.'
+    return
+  }
   selectedImage.value = file
+  errorMessage.value = ''
   revokePreview()
   uploadPreviewUrl.value = URL.createObjectURL(file)
 }
@@ -270,8 +352,19 @@ function onImageInput(event: Event) {
 }
 
 function onImageDrop(event: DragEvent) {
+  imageDragDepth.value = 0
   isDraggingImage.value = false
   selectImage(event.dataTransfer?.files?.[0] ?? null)
+}
+
+function onImageDragEnter() {
+  imageDragDepth.value += 1
+  isDraggingImage.value = true
+}
+
+function onImageDragLeave() {
+  imageDragDepth.value = Math.max(0, imageDragDepth.value - 1)
+  isDraggingImage.value = imageDragDepth.value > 0
 }
 
 function clearImage() {
@@ -419,10 +512,10 @@ function goToNextPage() {
 
         <div
           :class="['image-dropzone', isDraggingImage && 'image-dropzone--active']"
-          @dragenter.prevent="isDraggingImage = true"
-          @dragover.prevent="isDraggingImage = true"
-          @dragleave.prevent="isDraggingImage = false"
-          @drop.prevent="onImageDrop"
+          @dragenter.prevent.stop="onImageDragEnter"
+          @dragover.prevent.stop="isDraggingImage = true"
+          @dragleave.prevent.stop="onImageDragLeave"
+          @drop.prevent.stop="onImageDrop"
         >
           <img v-if="uploadPreviewUrl" :src="uploadPreviewUrl" alt="" />
           <div v-else class="image-dropzone__empty">
