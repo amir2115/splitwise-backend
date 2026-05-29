@@ -6,8 +6,8 @@ import { ApiError, apiRequest } from '@/shared/api/client'
 import { adminAuthStore } from '@/shared/auth/store'
 import SummaryCard from '@/shared/components/SummaryCard.vue'
 import type {
+  AdminArticleDetailResponse,
   AdminArticleListResponse,
-  ArticleDetailResponse,
   ArticleImageUploadResponse,
   ArticlePayload,
 } from '@/shared/types/api'
@@ -269,12 +269,12 @@ async function submitArticle() {
     }
     const existing = await findExistingArticle(payload.slug)
     const saved = existing
-      ? await apiRequest<ArticleDetailResponse>(
+      ? await apiRequest<AdminArticleDetailResponse>(
           `/admin/articles/${existing.id}`,
           { method: 'PATCH', body: JSON.stringify(payload) },
           adminAuthStore.accessToken,
         )
-      : await apiRequest<ArticleDetailResponse>(
+      : await apiRequest<AdminArticleDetailResponse>(
           '/admin/articles',
           { method: 'POST', body: JSON.stringify(payload) },
           adminAuthStore.accessToken,
@@ -325,9 +325,9 @@ async function createCategoryIfNeeded() {
   }
 }
 
-async function findExistingArticle(slug: string): Promise<ArticleDetailResponse | null> {
+async function findExistingArticle(slug: string): Promise<AdminArticleDetailResponse | null> {
   try {
-    return await apiRequest<ArticleDetailResponse>(`/admin/articles/slug/${slug}`, { method: 'GET' }, adminAuthStore.accessToken)
+    return await apiRequest<AdminArticleDetailResponse>(`/admin/articles/slug/${slug}`, { method: 'GET' }, adminAuthStore.accessToken)
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null
     throw error
@@ -384,7 +384,7 @@ function editFromList(article: { id: string }) {
 async function loadArticle(articleId: string) {
   errorMessage.value = ''
   try {
-    const detail = await apiRequest<ArticleDetailResponse>(`/admin/articles/${articleId}`, { method: 'GET' }, adminAuthStore.accessToken)
+    const detail = await apiRequest<AdminArticleDetailResponse>(`/admin/articles/${articleId}`, { method: 'GET' }, adminAuthStore.accessToken)
     articleJson.value = JSON.stringify(
       {
         slug: detail.slug,
@@ -400,7 +400,7 @@ async function loadArticle(articleId: string) {
         published_at: detail.published_at,
         audience: detail.audience,
         body: detail.body,
-        related_slugs: detail.related.map((item) => item.slug),
+        related_slugs: detail.related_slugs,
         seo: detail.seo,
       },
       null,
@@ -578,6 +578,9 @@ function goToNextPage() {
             <span class="article-status">{{ statusLabel(article.status) }}</span>
             <h2>{{ article.title }}</h2>
             <p>{{ article.slug }} · {{ article.category.name }} · {{ formatDate(article.updated_at) }}</p>
+            <small v-if="article.missing_related_slugs?.length" class="article-related-warning">
+              related ناموجود: {{ article.missing_related_slugs.join('، ') }}
+            </small>
           </div>
           <button class="ghost-button" type="button" @click="editFromList(article)">ویرایش</button>
         </article>
@@ -777,6 +780,18 @@ function goToNextPage() {
 
 .article-row-card p {
   margin: 0;
+}
+
+.article-related-warning {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: rgba(255, 184, 107, 0.12);
+  color: var(--color-warning);
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 @media (max-width: 1040px) {

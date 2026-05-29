@@ -192,7 +192,7 @@ def test_related_articles_are_expanded_in_detail(client: TestClient) -> None:
     assert detail.json()["related"][0]["slug"] == "base-article"
 
 
-def test_rejects_duplicate_heading_ids_and_missing_related_slug(client: TestClient) -> None:
+def test_rejects_duplicate_heading_ids_and_ignores_missing_related_slug(client: TestClient) -> None:
     headers = admin_headers(client)
     create_category_and_author(client, headers)
     duplicate_heading = article_payload()
@@ -205,8 +205,20 @@ def test_rejects_duplicate_heading_ids_and_missing_related_slug(client: TestClie
         headers=headers,
         json=article_payload(slug="missing-related", related_slugs=["not-found"]),
     )
-    assert missing_related.status_code == 400
-    assert missing_related.json()["error"]["code"] == "article_related_not_found"
+    assert missing_related.status_code == 201
+    assert missing_related.json()["related"] == []
+    assert missing_related.json()["related_slugs"] == ["not-found"]
+    assert missing_related.json()["missing_related_slugs"] == ["not-found"]
+
+    public = client.get("/api/v1/articles/missing-related")
+    assert public.status_code == 200
+    assert public.json()["related"] == []
+    assert "missing_related_slugs" not in public.json()
+
+    admin_listing = client.get("/api/v1/admin/articles", headers=headers)
+    assert admin_listing.status_code == 200
+    listed = {item["slug"]: item for item in admin_listing.json()["items"]}
+    assert listed["missing-related"]["missing_related_slugs"] == ["not-found"]
 
 
 def test_archive_article_returns_gone_for_public_detail(client: TestClient) -> None:

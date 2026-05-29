@@ -17,9 +17,9 @@ from app.schemas.admin import (
     AdminUsersQuery,
 )
 from app.schemas.articles import (
+    AdminArticleDetailResponse,
     AdminArticleListResponse,
     ArticleAuthorResponse,
-    ArticleDetailResponse,
     ArticleImageUploadResponse,
     ArticlePatchRequest,
     ArticleWriteRequest,
@@ -147,12 +147,12 @@ def admin_create_article_author(
     return create_author(db, payload)
 
 
-@router.post("/articles", response_model=ArticleDetailResponse, status_code=201)
+@router.post("/articles", response_model=AdminArticleDetailResponse, status_code=201)
 def admin_create_article(
     payload: ArticleWriteRequest,
     _: str = Depends(get_current_admin_username),
     db: Session = Depends(get_db),
-) -> ArticleDetailResponse:
+) -> AdminArticleDetailResponse:
     return create_article(db, payload)
 
 
@@ -169,40 +169,40 @@ def admin_list_articles(
     return list_admin_articles(db, search=search, status_filter=status, category=category, page=page, page_size=page_size)
 
 
-@router.get("/articles/slug/{slug}", response_model=ArticleDetailResponse)
+@router.get("/articles/slug/{slug}", response_model=AdminArticleDetailResponse)
 def admin_get_article_by_slug(
     slug: str = Path(...),
     _: str = Depends(get_current_admin_username),
     db: Session = Depends(get_db),
-) -> ArticleDetailResponse:
+) -> AdminArticleDetailResponse:
     return get_admin_article_by_slug(db, slug)
 
 
-@router.get("/articles/{article_id}", response_model=ArticleDetailResponse)
+@router.get("/articles/{article_id}", response_model=AdminArticleDetailResponse)
 def admin_get_article(
     article_id: str = Path(...),
     _: str = Depends(get_current_admin_username),
     db: Session = Depends(get_db),
-) -> ArticleDetailResponse:
+) -> AdminArticleDetailResponse:
     return get_admin_article(db, article_id)
 
 
-@router.patch("/articles/{article_id}", response_model=ArticleDetailResponse)
+@router.patch("/articles/{article_id}", response_model=AdminArticleDetailResponse)
 def admin_update_article(
     payload: ArticlePatchRequest,
     article_id: str = Path(...),
     _: str = Depends(get_current_admin_username),
     db: Session = Depends(get_db),
-) -> ArticleDetailResponse:
+) -> AdminArticleDetailResponse:
     return update_article(db, article_id, payload)
 
 
-@router.post("/articles/{article_id}/publish", response_model=ArticleDetailResponse)
+@router.post("/articles/{article_id}/publish", response_model=AdminArticleDetailResponse)
 def admin_publish_article(
     article_id: str = Path(...),
     _: str = Depends(get_current_admin_username),
     db: Session = Depends(get_db),
-) -> ArticleDetailResponse:
+) -> AdminArticleDetailResponse:
     return publish_article(db, article_id)
 
 

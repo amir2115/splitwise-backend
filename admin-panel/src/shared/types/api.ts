@@ -102,6 +102,11 @@ export interface ArticleListItem {
   updated_at: string
 }
 
+export interface AdminArticleListItem extends ArticleListItem {
+  related_slugs: string[]
+  missing_related_slugs: string[]
+}
+
 export interface ArticleDetailResponse extends ArticleListItem {
   tldr: string
   body: unknown[]
@@ -117,8 +122,13 @@ export interface ArticleDetailResponse extends ArticleListItem {
   seo: ArticleSeoPayload
 }
 
+export interface AdminArticleDetailResponse extends ArticleDetailResponse {
+  related_slugs: string[]
+  missing_related_slugs: string[]
+}
+
 export interface AdminArticleListResponse {
-  items: ArticleListItem[]
+  items: AdminArticleListItem[]
   pagination: {
     page: number
     page_size: number

@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 from urllib.parse import urljoin
 
 from fastapi import status
@@ -15,6 +15,8 @@ from app.core.config import get_settings
 from app.core.time import utcnow
 from app.models.domain import Article, ArticleAuthor, ArticleCategory, ArticleRedirect, ArticleStatus
 from app.schemas.articles import (
+    AdminArticleDetailResponse,
+    AdminArticleListItem,
     ArticleAuthorResponse,
     ArticleCategoryResponse,
     ArticleDetailResponse,
@@ -105,6 +107,14 @@ def _list_item(article: Article) -> ArticleListItem:
     )
 
 
+def _admin_list_item(article: Article) -> AdminArticleListItem:
+    return AdminArticleListItem(
+        **_list_item(article).model_dump(),
+        related_slugs=article.related_slugs,
+        missing_related_slugs=list(getattr(article, "_missing_related_slugs", [])),
+    )
+
+
 def _find_category(db: Session, slug: str) -> ArticleCategory:
     category = db.scalar(select(ArticleCategory).where(ArticleCategory.slug == slug))
     if not category:
@@ -136,20 +146,9 @@ def _ensure_slug_available(db: Session, slug: str, *, current_id: str | None = N
         raise DomainError(code="article_slug_taken", message="Article slug is already used", status_code=status.HTTP_409_CONFLICT)
 
 
-def _ensure_related_exist(db: Session, related_slugs: list[str], *, own_slug: str) -> None:
+def _ensure_related_not_self(related_slugs: list[str], *, own_slug: str) -> None:
     if own_slug in related_slugs:
         raise DomainError(code="article_related_self", message="Article cannot be related to itself", status_code=status.HTTP_400_BAD_REQUEST)
-    if not related_slugs:
-        return
-    rows = db.scalars(select(Article.slug).where(Article.slug.in_(related_slugs))).all()
-    missing = sorted(set(related_slugs) - set(rows))
-    if missing:
-        raise DomainError(
-            code="article_related_not_found",
-            message="One or more related articles do not exist",
-            status_code=status.HTTP_400_BAD_REQUEST,
-            details={"slugs": missing},
-        )
 
 
 def _apply_write_payload(db: Session, article: Article, payload: ArticleWriteRequest | ArticlePatchRequest) -> Article:
@@ -219,9 +218,9 @@ def create_author(db: Session, payload: AuthorWriteRequest) -> ArticleAuthorResp
     return _author_response(author)
 
 
-def create_article(db: Session, payload: ArticleWriteRequest) -> ArticleDetailResponse:
+def create_article(db: Session, payload: ArticleWriteRequest) -> AdminArticleDetailResponse:
     _ensure_slug_available(db, payload.slug)
-    _ensure_related_exist(db, payload.related_slugs, own_slug=payload.slug)
+    _ensure_related_not_self(payload.related_slugs, own_slug=payload.slug)
     article = Article(
         slug=payload.slug,
         title=payload.title,
@@ -254,18 +253,18 @@ def create_article(db: Session, payload: ArticleWriteRequest) -> ArticleDetailRe
     return get_admin_article(db, article.id)
 
 
-def update_article(db: Session, article_id: str, payload: ArticlePatchRequest) -> ArticleDetailResponse:
+def update_article(db: Session, article_id: str, payload: ArticlePatchRequest) -> AdminArticleDetailResponse:
     article = _find_article_by_id(db, article_id)
     next_slug = payload.slug or article.slug
     next_related = payload.related_slugs if payload.related_slugs is not None else article.related_slugs
-    _ensure_related_exist(db, next_related, own_slug=next_slug)
+    _ensure_related_not_self(next_related, own_slug=next_slug)
     _apply_write_payload(db, article, payload)
     db.commit()
     db.refresh(article)
     return get_admin_article(db, article.id)
 
 
-def publish_article(db: Session, article_id: str) -> ArticleDetailResponse:
+def publish_article(db: Session, article_id: str) -> AdminArticleDetailResponse:
     article = _find_article_by_id(db, article_id)
     article.status = ArticleStatus.PUBLISHED
     if not article.published_at:
@@ -338,6 +337,19 @@ def list_articles(db: Session, *, category: str | None, cursor: str | None, limi
 
 
 def _article_detail(db: Session, article: Article) -> ArticleDetailResponse:
+    return _article_detail_response(db, article, include_admin_fields=False)
+
+
+def _admin_article_detail(db: Session, article: Article) -> AdminArticleDetailResponse:
+    return _article_detail_response(db, article, include_admin_fields=True)
+
+
+def _article_detail_response(
+    db: Session,
+    article: Article,
+    *,
+    include_admin_fields: bool,
+) -> Union[ArticleDetailResponse, AdminArticleDetailResponse]:
     related_rows = []
     if article.related_slugs:
         related_rows = list(
@@ -348,6 +360,8 @@ def _article_detail(db: Session, article: Article) -> ArticleDetailResponse:
             ).all()
         )
     related_by_slug = {item.slug: item for item in related_rows}
+    missing_related_slugs = [slug for slug in article.related_slugs if slug not in related_by_slug]
+    article._missing_related_slugs = missing_related_slugs
     related = [
         RelatedArticleResponse(
             slug=related_article.slug,
@@ -360,7 +374,7 @@ def _article_detail(db: Session, article: Article) -> ArticleDetailResponse:
         if (related_article := related_by_slug.get(slug))
     ]
     list_item = _list_item(article)
-    return ArticleDetailResponse(
+    payload = dict(
         **list_item.model_dump(),
         tldr=article.tldr,
         body=article.body,
@@ -369,13 +383,20 @@ def _article_detail(db: Session, article: Article) -> ArticleDetailResponse:
         related=related,
         seo=_seo_response(article),
     )
+    if include_admin_fields:
+        return AdminArticleDetailResponse(
+            **payload,
+            related_slugs=article.related_slugs,
+            missing_related_slugs=missing_related_slugs,
+        )
+    return ArticleDetailResponse(**payload)
 
 
-def get_admin_article(db: Session, article_id: str) -> ArticleDetailResponse:
-    return _article_detail(db, _find_article_by_id(db, article_id))
+def get_admin_article(db: Session, article_id: str) -> AdminArticleDetailResponse:
+    return _admin_article_detail(db, _find_article_by_id(db, article_id))
 
 
-def get_admin_article_by_slug(db: Session, slug: str) -> ArticleDetailResponse:
+def get_admin_article_by_slug(db: Session, slug: str) -> AdminArticleDetailResponse:
     article = db.scalar(
         select(Article)
         .options(joinedload(Article.category), joinedload(Article.author))
@@ -383,7 +404,7 @@ def get_admin_article_by_slug(db: Session, slug: str) -> ArticleDetailResponse:
     )
     if not article:
         raise DomainError(code="article_not_found", message="Article not found", status_code=status.HTTP_404_NOT_FOUND)
-    return _article_detail(db, article)
+    return _admin_article_detail(db, article)
 
 
 def list_admin_articles(
@@ -422,11 +443,12 @@ def list_admin_articles(
             .limit(page_size)
         ).all()
     )
+    _attach_missing_related_slugs(db, rows)
     status_counts = dict(
         db.execute(select(Article.status, func.count(Article.id)).group_by(Article.status)).all()
     )
     return AdminArticleListResponse(
-        items=[_list_item(article) for article in rows],
+        items=[_admin_list_item(article) for article in rows],
         pagination=AdminArticleListPagination(page=page, page_size=page_size, total=int(total)),
         summary=AdminArticleListSummary(
             total_articles=sum(int(count) for count in status_counts.values()),
@@ -435,6 +457,13 @@ def list_admin_articles(
             archived_count=int(status_counts.get(ArticleStatus.ARCHIVED, 0)),
         ),
     )
+
+
+def _attach_missing_related_slugs(db: Session, articles: list[Article]) -> None:
+    requested_slugs = sorted({slug for article in articles for slug in article.related_slugs})
+    existing_slugs = set(db.scalars(select(Article.slug).where(Article.slug.in_(requested_slugs))).all()) if requested_slugs else set()
+    for article in articles:
+        article._missing_related_slugs = [slug for slug in article.related_slugs if slug not in existing_slugs]
 
 
 def get_public_article(db: Session, slug: str) -> ArticleDetailResponse:

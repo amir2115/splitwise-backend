@@ -311,6 +311,11 @@ class ArticleListItem(BaseModel):
     updated_at: datetime
 
 
+class AdminArticleListItem(ArticleListItem):
+    related_slugs: list[str] = Field(default_factory=list)
+    missing_related_slugs: list[str] = Field(default_factory=list)
+
+
 class ArticleListResponse(BaseModel):
     items: list[ArticleListItem]
     next_cursor: Optional[str]
@@ -330,7 +335,7 @@ class AdminArticleListSummary(BaseModel):
 
 
 class AdminArticleListResponse(BaseModel):
-    items: list[ArticleListItem]
+    items: list[AdminArticleListItem]
     pagination: AdminArticleListPagination
     summary: AdminArticleListSummary
 
@@ -342,6 +347,11 @@ class ArticleDetailResponse(ArticleListItem):
     audience: list[str]
     related: list[RelatedArticleResponse]
     seo: ArticleSeoResponse
+
+
+class AdminArticleDetailResponse(ArticleDetailResponse):
+    related_slugs: list[str] = Field(default_factory=list)
+    missing_related_slugs: list[str] = Field(default_factory=list)
 
 
 class ArticleImageUploadResponse(BaseModel):
