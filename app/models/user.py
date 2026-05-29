@@ -19,6 +19,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_phone_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    client_platform: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, index=True)
+    android_variant: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    last_client_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     groups = relationship("Group", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
@@ -86,6 +89,9 @@ class PendingRegistration(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     send_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     verify_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    client_platform: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    android_variant: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    last_client_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class InvitedAccountToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):

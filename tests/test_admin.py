@@ -250,6 +250,130 @@ def test_admin_users_support_phone_sorts(client):
     assert verified_usernames.index("verified_phone") < verified_usernames.index("no_phone")
 
 
+def test_client_metadata_tracks_android_variant_from_authenticated_request(client, db_session):
+    owner = client.post(
+        "/api/v1/auth/register",
+        headers={"X-Client-Platform": "frontend"},
+        json={"name": "Owner User", "username": "owner_user", "password": "password123"},
+    ).json()
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={
+            "Authorization": f"Bearer {owner['tokens']['access_token']}",
+            "X-Client-Platform": "android",
+            "X-App-Store": "bazaar",
+        },
+    )
+
+    assert response.status_code == 200
+    user = db_session.get(User, owner["user"]["id"])
+    assert user.client_platform == "android"
+    assert user.android_variant == "bazaar"
+    assert user.last_client_seen_at is not None
+
+
+def test_frontend_metadata_overwrites_android_and_clears_variant(client, db_session):
+    owner = client.post(
+        "/api/v1/auth/register",
+        headers={"X-Client-Platform": "android", "X-App-Store": "myket"},
+        json={"name": "Owner User", "username": "owner_user", "password": "password123"},
+    ).json()
+
+    login = client.post(
+        "/api/v1/auth/login",
+        headers={"X-Client-Platform": "frontend"},
+        json={"username": "owner_user", "password": "password123"},
+    )
+
+    assert login.status_code == 200
+    user = db_session.get(User, owner["user"]["id"])
+    assert user.client_platform == "frontend"
+    assert user.android_variant is None
+
+
+def test_missing_client_headers_do_not_erase_known_metadata(client, db_session):
+    owner = client.post(
+        "/api/v1/auth/register",
+        headers={"X-Client-Platform": "android", "X-App-Store": "organic"},
+        json={"name": "Owner User", "username": "owner_user", "password": "password123"},
+    ).json()
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {owner['tokens']['access_token']}"},
+    )
+
+    assert response.status_code == 200
+    user = db_session.get(User, owner["user"]["id"])
+    assert user.client_platform == "android"
+    assert user.android_variant == "organic"
+
+
+def test_admin_users_filter_by_client_platform_and_android_variant(client):
+    client.post(
+        "/api/v1/auth/register",
+        headers={"X-Client-Platform": "android", "X-App-Store": "bazaar"},
+        json={"name": "Android User", "username": "android_user", "password": "password123"},
+    )
+    client.post(
+        "/api/v1/auth/register",
+        headers={"X-Client-Platform": "frontend"},
+        json={"name": "Frontend User", "username": "frontend_user", "password": "password123"},
+    )
+    client.post(
+        "/api/v1/auth/register",
+        json={"name": "Unknown User", "username": "unknown_user", "password": "password123"},
+    )
+    login = client.post(
+        "/api/v1/admin/auth/login",
+        json={"username": "panel_admin", "password": "super-secret"},
+    ).json()
+    headers = {"Authorization": f"Bearer {login['access_token']}"}
+
+    android_users = client.get("/api/v1/admin/users", headers=headers, params={"client_platform": "android"})
+    assert android_users.status_code == 200
+    android_payload = android_users.json()
+    assert [item["username"] for item in android_payload["items"]] == ["android_user"]
+    assert android_payload["summary"]["android_users_count"] == 1
+
+    bazaar_users = client.get("/api/v1/admin/users", headers=headers, params={"android_variant": "bazaar"})
+    assert bazaar_users.status_code == 200
+    assert [item["username"] for item in bazaar_users.json()["items"]] == ["android_user"]
+
+    unknown_users = client.get("/api/v1/admin/users", headers=headers, params={"client_platform": "unknown"})
+    assert unknown_users.status_code == 200
+    assert [item["username"] for item in unknown_users.json()["items"]] == ["unknown_user"]
+
+
+def test_register_request_preserves_client_metadata_until_verify(client, db_session):
+    db_session.add(AppSetting(key="sms_otp_bypass_enabled", value="true"))
+    db_session.commit()
+
+    requested = client.post(
+        "/api/v1/auth/register/request",
+        headers={"X-Client-Platform": "android", "X-App-Store": "myket"},
+        json={
+            "name": "Otp User",
+            "username": "otp_user",
+            "password": "password123",
+            "phone_number": "09120000000",
+        },
+    )
+    assert requested.status_code == 200
+
+    verified = client.post(
+        "/api/v1/auth/register/verify",
+        json={"registration_id": requested.json()["registration_id"], "code": "12345"},
+    )
+
+    assert verified.status_code == 200
+    user = db_session.get(User, verified.json()["user"]["id"])
+    assert user.client_platform == "android"
+    assert user.android_variant == "myket"
+    assert user.last_client_seen_at is not None
+
+
 def test_admin_can_update_user_name_and_phone_number(client):
     owner = client.post(
         "/api/v1/auth/register",

@@ -50,17 +50,19 @@ from app.services.auth_service import (
     verify_register,
     verify_phone_number,
 )
+from app.services.client_tracking import parse_client_metadata
 
 router = APIRouter()
 
 
-def _is_android_client(x_client_platform: Optional[str]) -> bool:
-    return (x_client_platform or "").strip().lower() == "android"
-
-
 @router.post("/register", response_model=AuthResponse, status_code=201)
-def register(payload: UserRegister, db: Session = Depends(get_db)) -> AuthResponse:
-    return register_user(db, payload)
+def register(
+    payload: UserRegister,
+    db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(default=None),
+    x_app_store: Optional[str] = Header(default=None),
+) -> AuthResponse:
+    return register_user(db, payload, client_metadata=parse_client_metadata(x_client_platform, x_app_store))
 
 
 @router.post("/register/request", response_model=RegisterRequestResponse)
@@ -68,13 +70,20 @@ def register_request(
     payload: RegisterRequest,
     db: Session = Depends(get_db),
     x_client_platform: Optional[str] = Header(default=None),
+    x_app_store: Optional[str] = Header(default=None),
 ) -> RegisterRequestResponse:
-    return request_register(db, payload, is_android_client=_is_android_client(x_client_platform))
+    client_metadata = parse_client_metadata(x_client_platform, x_app_store)
+    return request_register(db, payload, is_android_client=client_metadata.is_android, client_metadata=client_metadata)
 
 
 @router.post("/register/verify", response_model=AuthResponse)
-def register_verify(payload: RegisterVerifyRequest, db: Session = Depends(get_db)) -> AuthResponse:
-    return verify_register(db, payload)
+def register_verify(
+    payload: RegisterVerifyRequest,
+    db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(default=None),
+    x_app_store: Optional[str] = Header(default=None),
+) -> AuthResponse:
+    return verify_register(db, payload, client_metadata=parse_client_metadata(x_client_platform, x_app_store))
 
 
 @router.post("/register/resend", response_model=RegisterRequestResponse)
@@ -82,18 +91,29 @@ def register_resend(
     payload: RegisterResendRequest,
     db: Session = Depends(get_db),
     x_client_platform: Optional[str] = Header(default=None),
+    x_app_store: Optional[str] = Header(default=None),
 ) -> RegisterRequestResponse:
-    return resend_register_code(db, payload, is_android_client=_is_android_client(x_client_platform))
+    return resend_register_code(db, payload, is_android_client=parse_client_metadata(x_client_platform, x_app_store).is_android)
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(payload: UserLogin, db: Session = Depends(get_db)) -> AuthResponse:
-    return login_user(db, payload)
+def login(
+    payload: UserLogin,
+    db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(default=None),
+    x_app_store: Optional[str] = Header(default=None),
+) -> AuthResponse:
+    return login_user(db, payload, client_metadata=parse_client_metadata(x_client_platform, x_app_store))
 
 
 @router.post("/refresh", response_model=TokenPair)
-def refresh(payload: TokenRefreshRequest, db: Session = Depends(get_db)) -> TokenPair:
-    return refresh_tokens(db, payload.refresh_token)
+def refresh(
+    payload: TokenRefreshRequest,
+    db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(default=None),
+    x_app_store: Optional[str] = Header(default=None),
+) -> TokenPair:
+    return refresh_tokens(db, payload.refresh_token, client_metadata=parse_client_metadata(x_client_platform, x_app_store))
 
 
 @router.post("/users", response_model=UserResponse, status_code=201)
@@ -119,8 +139,9 @@ def request_forgot_password(
     payload: PasswordResetRequest,
     db: Session = Depends(get_db),
     x_client_platform: Optional[str] = Header(default=None),
+    x_app_store: Optional[str] = Header(default=None),
 ) -> PasswordResetRequestResponse:
-    return request_password_reset(db, payload, is_android_client=_is_android_client(x_client_platform))
+    return request_password_reset(db, payload, is_android_client=parse_client_metadata(x_client_platform, x_app_store).is_android)
 
 
 @router.post("/forgot-password/verify", response_model=PasswordResetVerifyResponse)
@@ -135,8 +156,10 @@ def verify_forgot_password_code(
 def confirm_forgot_password(
     payload: PasswordResetConfirmRequest,
     db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(default=None),
+    x_app_store: Optional[str] = Header(default=None),
 ) -> AuthResponse:
-    return confirm_password_reset(db, payload)
+    return confirm_password_reset(db, payload, client_metadata=parse_client_metadata(x_client_platform, x_app_store))
 
 
 @router.post("/invited-account/request", response_model=InvitedAccountRequestResponse)
@@ -159,8 +182,10 @@ def verify_invited_account_flow_phone(
 def complete_invited_account_flow(
     payload: InvitedAccountCompleteRequest,
     db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(default=None),
+    x_app_store: Optional[str] = Header(default=None),
 ) -> AuthResponse:
-    return complete_invited_account(db, payload)
+    return complete_invited_account(db, payload, client_metadata=parse_client_metadata(x_client_platform, x_app_store))
 
 
 @router.post("/phone/request-verification", response_model=PhoneVerificationRequestResponse)
@@ -169,8 +194,9 @@ def request_current_user_phone_verification(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     x_client_platform: Optional[str] = Header(default=None),
+    x_app_store: Optional[str] = Header(default=None),
 ) -> PhoneVerificationRequestResponse:
-    return request_phone_verification(db, current_user, payload, is_android_client=_is_android_client(x_client_platform))
+    return request_phone_verification(db, current_user, payload, is_android_client=parse_client_metadata(x_client_platform, x_app_store).is_android)
 
 
 @router.post("/phone/verify", response_model=UserResponse)

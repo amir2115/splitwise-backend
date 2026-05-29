@@ -15,6 +15,9 @@ export interface AdminUserListItem {
   phone_number: string | null
   is_phone_verified: boolean
   must_change_password: boolean
+  client_platform: 'android' | 'frontend' | 'unknown' | null
+  android_variant: 'bazaar' | 'myket' | 'organic' | null
+  last_client_seen_at: string | null
   created_at: string
   updated_at: string
   groups_count: number
@@ -37,6 +40,9 @@ export interface AdminUserListResponse {
   summary: {
     total_users: number
     must_change_password_count: number
+    android_users_count: number
+    frontend_users_count: number
+    unknown_client_users_count: number
   }
 }
 
@@ -135,6 +141,8 @@ export interface ArticleImageUploadResponse {
 export interface AdminUserListFilters {
   search: string
   must_change_password: 'all' | 'true' | 'false'
+  client_platform: 'all' | 'android' | 'frontend' | 'unknown'
+  android_variant: 'all' | 'bazaar' | 'myket' | 'organic' | 'unknown'
   sort_by:
     | 'created_at'
     | 'updated_at'
@@ -144,6 +152,9 @@ export interface AdminUserListFilters {
     | 'active_refresh_tokens_count'
     | 'has_phone_number'
     | 'is_phone_verified'
+    | 'client_platform'
+    | 'android_variant'
+    | 'last_client_seen_at'
   sort_order: 'asc' | 'desc'
   page: number
   page_size: number

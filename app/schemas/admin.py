@@ -28,6 +28,9 @@ class AdminUserListItem(BaseModel):
     phone_number: Optional[str]
     is_phone_verified: bool
     must_change_password: bool
+    client_platform: Optional[str]
+    android_variant: Optional[str]
+    last_client_seen_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
     groups_count: int
@@ -118,6 +121,9 @@ class AdminUsersPagination(BaseModel):
 class AdminUsersSummary(BaseModel):
     total_users: int
     must_change_password_count: int
+    android_users_count: int
+    frontend_users_count: int
+    unknown_client_users_count: int
 
 
 class AdminUserListResponse(BaseModel):
@@ -129,6 +135,8 @@ class AdminUserListResponse(BaseModel):
 class AdminUsersQuery(BaseModel):
     search: Optional[str] = None
     must_change_password: Optional[bool] = None
+    client_platform: Optional[Literal["android", "frontend", "unknown"]] = None
+    android_variant: Optional[Literal["bazaar", "myket", "organic", "unknown"]] = None
     sort_by: Literal[
         "created_at",
         "updated_at",
@@ -138,6 +146,9 @@ class AdminUsersQuery(BaseModel):
         "active_refresh_tokens_count",
         "has_phone_number",
         "is_phone_verified",
+        "client_platform",
+        "android_variant",
+        "last_client_seen_at",
     ] = "created_at"
     sort_order: Literal["asc", "desc"] = "desc"
     page: int = Field(default=1, ge=1)

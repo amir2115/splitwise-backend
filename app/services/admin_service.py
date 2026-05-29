@@ -28,6 +28,7 @@ from app.schemas.admin import (
     AdminUsersQuery,
     AdminUsersSummary,
 )
+from app.services.client_tracking import CLIENT_PLATFORM_ANDROID, CLIENT_PLATFORM_FRONTEND, CLIENT_PLATFORM_UNKNOWN
 from app.services.auth_service import _normalize_name, _normalize_phone_number
 from app.services.runtime_settings_service import list_runtime_settings, set_runtime_settings
 
@@ -168,6 +169,9 @@ def _build_admin_user_item(db: Session, user: User) -> AdminUserListItem:
         phone_number=user.phone_number,
         is_phone_verified=user.is_phone_verified,
         must_change_password=user.must_change_password,
+        client_platform=user.client_platform,
+        android_variant=user.android_variant,
+        last_client_seen_at=user.last_client_seen_at,
         created_at=user.created_at,
         updated_at=user.updated_at,
         groups_count=groups_count,
@@ -218,6 +222,9 @@ def list_users(db: Session, query: AdminUsersQuery) -> AdminUserListResponse:
             User.phone_number,
             User.is_phone_verified,
             User.must_change_password,
+            User.client_platform,
+            User.android_variant,
+            User.last_client_seen_at,
             User.created_at,
             User.updated_at,
             func.coalesce(group_counts_subquery.c.groups_count, 0).label("groups_count"),
@@ -235,16 +242,30 @@ def list_users(db: Session, query: AdminUsersQuery) -> AdminUserListResponse:
         base_query = base_query.where(or_(*search_filters))
     if query.must_change_password is not None:
         base_query = base_query.where(User.must_change_password.is_(query.must_change_password))
+    if query.client_platform == CLIENT_PLATFORM_UNKNOWN:
+        base_query = base_query.where(or_(User.client_platform.is_(None), User.client_platform == CLIENT_PLATFORM_UNKNOWN))
+    elif query.client_platform:
+        base_query = base_query.where(User.client_platform == query.client_platform)
+    if query.android_variant == CLIENT_PLATFORM_UNKNOWN:
+        base_query = base_query.where(User.client_platform == CLIENT_PLATFORM_ANDROID, User.android_variant.is_(None))
+    elif query.android_variant:
+        base_query = base_query.where(User.client_platform == CLIENT_PLATFORM_ANDROID, User.android_variant == query.android_variant)
 
     subquery = base_query.subquery()
     summary_row = db.execute(
         select(
             func.count(subquery.c.id),
             func.sum(case((subquery.c.must_change_password.is_(True), 1), else_=0)),
+            func.sum(case((subquery.c.client_platform == CLIENT_PLATFORM_ANDROID, 1), else_=0)),
+            func.sum(case((subquery.c.client_platform == CLIENT_PLATFORM_FRONTEND, 1), else_=0)),
+            func.sum(case((or_(subquery.c.client_platform.is_(None), subquery.c.client_platform == CLIENT_PLATFORM_UNKNOWN), 1), else_=0)),
         )
     ).one()
     total = int(summary_row[0] or 0)
     must_change_password_count = int(summary_row[1] or 0)
+    android_users_count = int(summary_row[2] or 0)
+    frontend_users_count = int(summary_row[3] or 0)
+    unknown_client_users_count = int(summary_row[4] or 0)
 
     sort_columns = {
         "created_at": subquery.c.created_at,
@@ -255,6 +276,9 @@ def list_users(db: Session, query: AdminUsersQuery) -> AdminUserListResponse:
         "active_refresh_tokens_count": subquery.c.active_refresh_tokens_count,
         "has_phone_number": case((subquery.c.phone_number.is_not(None), 1), else_=0),
         "is_phone_verified": case((subquery.c.is_phone_verified.is_(True), 1), else_=0),
+        "client_platform": subquery.c.client_platform,
+        "android_variant": subquery.c.android_variant,
+        "last_client_seen_at": subquery.c.last_client_seen_at,
     }
     sort_column = sort_columns[query.sort_by]
     ordered_query: Select = select(subquery)
@@ -270,6 +294,9 @@ def list_users(db: Session, query: AdminUsersQuery) -> AdminUserListResponse:
             phone_number=row.phone_number,
             is_phone_verified=row.is_phone_verified,
             must_change_password=row.must_change_password,
+            client_platform=row.client_platform,
+            android_variant=row.android_variant,
+            last_client_seen_at=row.last_client_seen_at,
             created_at=row.created_at,
             updated_at=row.updated_at,
             groups_count=int(row.groups_count or 0),
@@ -280,7 +307,13 @@ def list_users(db: Session, query: AdminUsersQuery) -> AdminUserListResponse:
     return AdminUserListResponse(
         items=items,
         pagination=AdminUsersPagination(page=query.page, page_size=query.page_size, total=total),
-        summary=AdminUsersSummary(total_users=total, must_change_password_count=must_change_password_count),
+        summary=AdminUsersSummary(
+            total_users=total,
+            must_change_password_count=must_change_password_count,
+            android_users_count=android_users_count,
+            frontend_users_count=frontend_users_count,
+            unknown_client_users_count=unknown_client_users_count,
+        ),
     )
 
 

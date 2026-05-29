@@ -34,6 +34,17 @@ const filters = computed<AdminUserListFilters>(() => ({
     route.query.must_change_password === 'true' || route.query.must_change_password === 'false'
       ? route.query.must_change_password
       : 'all',
+  client_platform:
+    route.query.client_platform === 'android' || route.query.client_platform === 'frontend' || route.query.client_platform === 'unknown'
+      ? route.query.client_platform
+      : 'all',
+  android_variant:
+    route.query.android_variant === 'bazaar' ||
+    route.query.android_variant === 'myket' ||
+    route.query.android_variant === 'organic' ||
+    route.query.android_variant === 'unknown'
+      ? route.query.android_variant
+      : 'all',
   sort_by:
     typeof route.query.sort_by === 'string' &&
     [
@@ -45,6 +56,9 @@ const filters = computed<AdminUserListFilters>(() => ({
       'active_refresh_tokens_count',
       'has_phone_number',
       'is_phone_verified',
+      'client_platform',
+      'android_variant',
+      'last_client_seen_at',
     ].includes(route.query.sort_by)
       ? (route.query.sort_by as AdminUserListFilters['sort_by'])
       : 'created_at',
@@ -76,6 +90,8 @@ async function fetchUsers(currentFilters: AdminUserListFilters) {
     const params = new URLSearchParams()
     if (currentFilters.search) params.set('search', currentFilters.search)
     if (currentFilters.must_change_password !== 'all') params.set('must_change_password', currentFilters.must_change_password)
+    if (currentFilters.client_platform !== 'all') params.set('client_platform', currentFilters.client_platform)
+    if (currentFilters.android_variant !== 'all') params.set('android_variant', currentFilters.android_variant)
     params.set('sort_by', currentFilters.sort_by)
     params.set('sort_order', currentFilters.sort_order)
     params.set('page', String(currentFilters.page))
@@ -108,6 +124,8 @@ async function updateFilters(patch: Partial<AdminUserListFilters>) {
   }
   if (next.search) query.search = next.search
   if (next.must_change_password !== 'all') query.must_change_password = next.must_change_password
+  if (next.client_platform !== 'all') query.client_platform = next.client_platform
+  if (next.android_variant !== 'all') query.android_variant = next.android_variant
   await router.replace({ path: '/users', query })
 }
 
@@ -131,6 +149,31 @@ function displayPhoneNumber(phoneNumber: string | null) {
 
 function displayPhoneVerificationStatus(isVerified: boolean) {
   return isVerified ? 'تایید شده' : 'تایید نشده'
+}
+
+function displayClientPlatform(platform: AdminUserListItem['client_platform']) {
+  if (platform === 'android') return 'اندروید'
+  if (platform === 'frontend') return 'فرانت'
+  return 'نامشخص'
+}
+
+function displayAndroidVariant(variant: AdminUserListItem['android_variant']) {
+  if (variant === 'bazaar') return 'بازار'
+  if (variant === 'myket') return 'مایکت'
+  if (variant === 'organic') return 'مستقیم'
+  return 'نامشخص'
+}
+
+function decrementClientSummary(user: AdminUserListItem) {
+  if (!response.value) return
+  const platform = user.client_platform || 'unknown'
+  if (platform === 'android') {
+    response.value.summary.android_users_count = Math.max(0, response.value.summary.android_users_count - 1)
+  } else if (platform === 'frontend') {
+    response.value.summary.frontend_users_count = Math.max(0, response.value.summary.frontend_users_count - 1)
+  } else {
+    response.value.summary.unknown_client_users_count = Math.max(0, response.value.summary.unknown_client_users_count - 1)
+  }
 }
 
 function openEditModal(user: AdminUserListItem) {
@@ -212,6 +255,7 @@ async function submitDelete() {
         0,
         response.value.summary.must_change_password_count - (editingUser.value.must_change_password ? 1 : 0),
       )
+      decrementClientSummary(editingUser.value)
     }
     closeEditModal()
   } catch (error) {
@@ -260,6 +304,14 @@ async function submitDelete() {
         tone="warning"
       />
       <SummaryCard
+        label="اندروید"
+        :value="formatNumber(response?.summary.android_users_count ?? 0)"
+      />
+      <SummaryCard
+        label="فرانت"
+        :value="formatNumber(response?.summary.frontend_users_count ?? 0)"
+      />
+      <SummaryCard
         label="نمایش در این صفحه"
         :value="formatNumber(visibleCount)"
       />
@@ -289,6 +341,33 @@ async function submitDelete() {
         </label>
 
         <label class="field">
+          <span>کلاینت</span>
+          <select
+            :value="filters.client_platform"
+            @change="updateFilters({ client_platform: ($event.target as HTMLSelectElement).value as AdminUserListFilters['client_platform'], page: 1 })"
+          >
+            <option value="all">همه</option>
+            <option value="android">اندروید</option>
+            <option value="frontend">فرانت</option>
+            <option value="unknown">نامشخص</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>وریانت اندروید</span>
+          <select
+            :value="filters.android_variant"
+            @change="updateFilters({ android_variant: ($event.target as HTMLSelectElement).value as AdminUserListFilters['android_variant'], page: 1 })"
+          >
+            <option value="all">همه</option>
+            <option value="bazaar">بازار</option>
+            <option value="myket">مایکت</option>
+            <option value="organic">مستقیم</option>
+            <option value="unknown">نامشخص</option>
+          </select>
+        </label>
+
+        <label class="field">
           <span>مرتب‌سازی</span>
           <select
             :value="filters.sort_by"
@@ -302,6 +381,9 @@ async function submitDelete() {
             <option value="active_refresh_tokens_count">توکن فعال</option>
             <option value="has_phone_number">دارای شماره تلفن</option>
             <option value="is_phone_verified">وریفای شماره تلفن</option>
+            <option value="client_platform">کلاینت</option>
+            <option value="android_variant">وریانت اندروید</option>
+            <option value="last_client_seen_at">آخرین درخواست کلاینت</option>
           </select>
         </label>
 
@@ -346,6 +428,7 @@ async function submitDelete() {
               <th>کاربر</th>
               <th>شماره تلفن</th>
               <th>وضعیت</th>
+              <th>کلاینت</th>
               <th>گروه‌ها</th>
               <th>توکن فعال</th>
               <th>تاریخ ساخت</th>
@@ -367,6 +450,10 @@ async function submitDelete() {
                 <small class="user-phone-verified">{{ displayPhoneVerificationStatus(user.is_phone_verified) }}</small>
               </td>
               <td><StatusBadge :active="user.must_change_password" /></td>
+              <td>
+                <span>{{ displayClientPlatform(user.client_platform) }}</span>
+                <small v-if="user.client_platform === 'android'" class="user-phone-verified">{{ displayAndroidVariant(user.android_variant) }}</small>
+              </td>
               <td>{{ formatNumber(user.groups_count) }}</td>
               <td>{{ formatNumber(user.active_refresh_tokens_count) }}</td>
               <td>{{ formatDate(user.created_at) }}</td>
@@ -389,6 +476,8 @@ async function submitDelete() {
               <p>@{{ user.username }}</p>
               <small class="user-card__phone">{{ displayPhoneNumber(user.phone_number) }}</small>
               <small class="user-card__phone user-card__phone--status">{{ displayPhoneVerificationStatus(user.is_phone_verified) }}</small>
+              <small class="user-card__phone">کلاینت: {{ displayClientPlatform(user.client_platform) }}</small>
+              <small v-if="user.client_platform === 'android'" class="user-card__phone user-card__phone--status">وریانت: {{ displayAndroidVariant(user.android_variant) }}</small>
             </div>
             <StatusBadge :active="user.must_change_password" />
           </div>

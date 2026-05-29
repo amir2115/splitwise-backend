@@ -130,6 +130,9 @@ class UserResponse(ORMModel):
     phone_number: Optional[str]
     is_phone_verified: bool
     must_change_password: bool
+    client_platform: Optional[str] = None
+    android_variant: Optional[str] = None
+    last_client_seen_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

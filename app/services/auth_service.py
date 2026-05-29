@@ -47,6 +47,7 @@ from app.schemas.auth import (
     UserResponse,
 )
 from app.services.runtime_settings_service import get_runtime_setting, get_runtime_setting_int
+from app.services.client_tracking import ClientMetadata, apply_client_metadata
 from app.services.sms_service import SmsVerifyResult, send_template_sms, send_verify_sms
 
 PASSWORD_RESET_TOKEN_MINUTES = 15
@@ -406,7 +407,7 @@ def _verify_phone_number_for_user(db: Session, *, user: User, phone_number: str,
     return _build_user_response(user)
 
 
-def register_user(db: Session, payload: UserRegister) -> AuthResponse:
+def register_user(db: Session, payload: UserRegister, *, client_metadata: ClientMetadata | None = None) -> AuthResponse:
     name = _normalize_name(payload.name)
     username = _normalize_username(payload.username)
     phone_number = _normalize_phone_number(payload.phone_number) if payload.phone_number else None
@@ -420,6 +421,8 @@ def register_user(db: Session, payload: UserRegister) -> AuthResponse:
     user = _create_user_record(db, name=name, username=username, password=payload.password, must_change_password=False)
     user.phone_number = phone_number
     user.is_phone_verified = bool(phone_number)
+    if client_metadata is not None:
+        apply_client_metadata(user, client_metadata)
     tokens = _issue_tokens(db, user)
     db.commit()
     db.refresh(user)
@@ -445,7 +448,13 @@ def _get_pending_registration(db: Session, registration_id: str) -> PendingRegis
     return db.get(PendingRegistration, registration_id)
 
 
-def request_register(db: Session, payload: RegisterRequest, *, is_android_client: bool = False) -> RegisterRequestResponse:
+def request_register(
+    db: Session,
+    payload: RegisterRequest,
+    *,
+    is_android_client: bool = False,
+    client_metadata: ClientMetadata | None = None,
+) -> RegisterRequestResponse:
     settings = get_settings()
     sms_bypass_enabled = _is_sms_otp_bypass_enabled(db)
     name = _normalize_name(payload.name)
@@ -481,6 +490,9 @@ def request_register(db: Session, payload: RegisterRequest, *, is_android_client
         last_sent_at=now,
         send_attempts=1,
         verify_attempts=0,
+        client_platform=client_metadata.platform if client_metadata is not None else None,
+        android_variant=client_metadata.android_variant if client_metadata is not None else None,
+        last_client_seen_at=now if client_metadata is not None else None,
     )
     db.add(record)
     db.flush()
@@ -552,7 +564,7 @@ def resend_register_code(db: Session, payload: RegisterResendRequest, *, is_andr
     )
 
 
-def verify_register(db: Session, payload: RegisterVerifyRequest) -> AuthResponse:
+def verify_register(db: Session, payload: RegisterVerifyRequest, *, client_metadata: ClientMetadata | None = None) -> AuthResponse:
     settings = get_settings()
     record = _get_pending_registration(db, payload.registration_id)
     if not record or record.consumed_at is not None:
@@ -585,7 +597,12 @@ def verify_register(db: Session, payload: RegisterVerifyRequest) -> AuthResponse
         is_phone_verified=True,
         password_hash=record.password_hash,
         must_change_password=False,
+        client_platform=record.client_platform,
+        android_variant=record.android_variant,
+        last_client_seen_at=record.last_client_seen_at,
     )
+    if client_metadata is not None:
+        apply_client_metadata(user, client_metadata)
     db.add(user)
     db.flush()
     record.consumed_at = now
@@ -677,13 +694,15 @@ def verify_invited_account_phone(db: Session, payload: InvitedAccountVerifyPhone
     return _verify_phone_number_for_user(db, user=user, phone_number=user.phone_number, code=payload.code)
 
 
-def complete_invited_account(db: Session, payload: InvitedAccountCompleteRequest) -> AuthResponse:
+def complete_invited_account(db: Session, payload: InvitedAccountCompleteRequest, *, client_metadata: ClientMetadata | None = None) -> AuthResponse:
     record, user = _get_invited_account_token_record(db, payload.token)
     _validate_password(payload.new_password)
     now = utcnow()
     user.password_hash = hash_password(payload.new_password)
     user.must_change_password = False
     user.updated_at = now
+    if client_metadata is not None:
+        apply_client_metadata(user, client_metadata)
     record.consumed_at = now
     record.updated_at = now
     tokens = _issue_tokens(db, user)
@@ -692,18 +711,20 @@ def complete_invited_account(db: Session, payload: InvitedAccountCompleteRequest
     return AuthResponse(user=_build_user_response(user), tokens=tokens)
 
 
-def login_user(db: Session, payload: UserLogin) -> AuthResponse:
+def login_user(db: Session, payload: UserLogin, *, client_metadata: ClientMetadata | None = None) -> AuthResponse:
     username = _normalize_username_reference(payload.username)
     user = db.scalar(select(User).where(User.username == username))
     if not user or not verify_password(payload.password, user.password_hash):
         raise DomainError(code="invalid_credentials", message="Invalid username or password", status_code=status.HTTP_401_UNAUTHORIZED)
 
+    if client_metadata is not None:
+        apply_client_metadata(user, client_metadata)
     tokens = _issue_tokens(db, user)
     db.commit()
     return AuthResponse(user=_build_user_response(user), tokens=tokens)
 
 
-def refresh_tokens(db: Session, refresh_token: str) -> TokenPair:
+def refresh_tokens(db: Session, refresh_token: str, *, client_metadata: ClientMetadata | None = None) -> TokenPair:
     try:
         payload = decode_token(refresh_token)
     except ValueError as exc:
@@ -721,6 +742,8 @@ def refresh_tokens(db: Session, refresh_token: str) -> TokenPair:
         raise DomainError(code="invalid_token", message="User not found", status_code=status.HTTP_401_UNAUTHORIZED)
 
     record.revoked_at = utcnow()
+    if client_metadata is not None:
+        apply_client_metadata(user, client_metadata)
     tokens = _issue_tokens(db, user)
     db.commit()
     return tokens
@@ -897,7 +920,7 @@ def verify_password_reset(db: Session, payload: PasswordResetVerifyRequest) -> P
     return PasswordResetVerifyResponse(reset_token=reset_token)
 
 
-def confirm_password_reset(db: Session, payload: PasswordResetConfirmRequest) -> AuthResponse:
+def confirm_password_reset(db: Session, payload: PasswordResetConfirmRequest, *, client_metadata: ClientMetadata | None = None) -> AuthResponse:
     try:
         token_payload = decode_token(payload.reset_token)
     except ValueError as exc:
@@ -924,6 +947,8 @@ def confirm_password_reset(db: Session, payload: PasswordResetConfirmRequest) ->
     user.password_hash = hash_password(payload.new_password)
     user.must_change_password = False
     user.updated_at = now
+    if client_metadata is not None:
+        apply_client_metadata(user, client_metadata)
     record.consumed_at = now
     record.updated_at = now
 

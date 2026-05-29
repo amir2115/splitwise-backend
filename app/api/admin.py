@@ -59,6 +59,8 @@ def admin_me(admin_username: str = Depends(get_current_admin_username)) -> Admin
 def admin_list_users(
     search: Optional[str] = Query(default=None),
     must_change_password: Optional[bool] = Query(default=None),
+    client_platform: Optional[Literal["android", "frontend", "unknown"]] = Query(default=None),
+    android_variant: Optional[Literal["bazaar", "myket", "organic", "unknown"]] = Query(default=None),
     sort_by: Literal[
         "created_at",
         "updated_at",
@@ -68,6 +70,9 @@ def admin_list_users(
         "active_refresh_tokens_count",
         "has_phone_number",
         "is_phone_verified",
+        "client_platform",
+        "android_variant",
+        "last_client_seen_at",
     ] = Query(default="created_at"),
     sort_order: Literal["asc", "desc"] = Query(default="desc"),
     page: int = Query(default=1, ge=1),
@@ -78,6 +83,8 @@ def admin_list_users(
     query = AdminUsersQuery(
         search=search,
         must_change_password=must_change_password,
+        client_platform=client_platform,
+        android_variant=android_variant,
         sort_by=sort_by,
         sort_order=sort_order,
         page=page,
