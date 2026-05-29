@@ -153,6 +153,37 @@ def test_admin_list_articles_includes_all_statuses_and_filters(client: TestClien
     assert [item["slug"] for item in filtered.json()["items"]] == ["draft-one"]
 
 
+def test_admin_can_export_articles_with_category_metadata_and_missing_related(client: TestClient) -> None:
+    assert client.get("/api/v1/admin/articles/export").status_code == 401
+    headers = admin_headers(client)
+    create_category_and_author(client, headers)
+    published = client.post(
+        "/api/v1/admin/articles",
+        headers=headers,
+        json=article_payload(slug="published-one", status="published", related_slugs=["future-one"]),
+    )
+    draft = client.post("/api/v1/admin/articles", headers=headers, json=article_payload(slug="draft-one", status="draft"))
+    archived = client.post("/api/v1/admin/articles", headers=headers, json=article_payload(slug="archived-one", status="archived"))
+    assert published.status_code == 201
+    assert draft.status_code == 201
+    assert archived.status_code == 201
+
+    response = client.get("/api/v1/admin/articles/export", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["generated_at"]
+    exported = {article["slug"]: article for article in payload["articles"]}
+    assert set(exported) == {"published-one", "draft-one", "archived-one"}
+    assert exported["published-one"]["category_name"] == "تقسیم هزینه سفر"
+    assert exported["published-one"]["category_display_order"] == 1
+    assert exported["published-one"]["related_slugs"] == ["future-one"]
+    assert exported["published-one"]["missing_related_slugs"] == ["future-one"]
+    assert exported["published-one"]["body"][-1]["kind"] == "faq"
+    assert payload["categories"][0]["slug"] == "travel-split"
+    assert payload["authors"][0]["slug"] == "dongino-editorial"
+
+
 def test_admin_can_fetch_article_by_id_and_slug_for_update_flow(client: TestClient) -> None:
     headers = admin_headers(client)
     create_category_and_author(client, headers)

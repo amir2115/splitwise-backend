@@ -7,6 +7,7 @@ import { adminAuthStore } from '@/shared/auth/store'
 import SummaryCard from '@/shared/components/SummaryCard.vue'
 import type {
   AdminArticleDetailResponse,
+  AdminArticleExportResponse,
   AdminArticleListResponse,
   ArticleImageUploadResponse,
   ArticlePayload,
@@ -17,6 +18,7 @@ const router = useRouter()
 
 const loading = ref(false)
 const submitting = ref(false)
+const exportingArticles = ref(false)
 const uploadPreviewUrl = ref('')
 const errorMessage = ref('')
 const successMessage = ref('')
@@ -34,6 +36,8 @@ const articleJson = ref(`{
   "slug": "article-slug",
   "status": "draft",
   "category_slug": "guides",
+  "category_name": "راهنما",
+  "category_display_order": 10,
   "author_slug": "dongino-editorial",
   "title": "عنوان مقاله",
   "summary": "خلاصه کوتاه مقاله",
@@ -75,6 +79,8 @@ const totalPages = computed(() => {
 watch(articlePayload, (payload) => {
   if (!payload) return
   sideForm.value.category_slug = payload.category_slug || sideForm.value.category_slug
+  if (typeof payload.category_name === 'string') sideForm.value.category_name = payload.category_name
+  if (typeof payload.category_display_order === 'number') sideForm.value.category_display_order = payload.category_display_order
   sideForm.value.status = payload.status || sideForm.value.status
   sideForm.value.author_slug = payload.author_slug || sideForm.value.author_slug
 }, { immediate: true })
@@ -109,6 +115,8 @@ function parseArticleJson(raw: string): { payload: ArticlePayload | null; errors
     if (typeof payload[field] !== 'string' || !payload[field]?.trim()) errors.push(`${field} الزامی است.`)
   }
   if (!['draft', 'published', 'archived'].includes(String(payload.status))) errors.push('status باید draft، published یا archived باشد.')
+  if ('category_name' in payload && typeof payload.category_name !== 'string') errors.push('category_name باید رشته باشد.')
+  if ('category_display_order' in payload && typeof payload.category_display_order !== 'number') errors.push('category_display_order باید عدد باشد.')
   if (typeof payload.reading_minutes !== 'number') errors.push('reading_minutes باید عدد باشد.')
   if (!Array.isArray(payload.audience)) errors.push('audience باید آرایه باشد.')
   if (!Array.isArray(payload.related_slugs)) errors.push('related_slugs باید آرایه باشد.')
@@ -222,8 +230,11 @@ function isFilledString(value: unknown): value is string {
 
 function buildPayload(): ArticlePayload {
   if (!articlePayload.value) throw new Error('invalid article payload')
+  const payload = { ...articlePayload.value }
+  delete payload.category_name
+  delete payload.category_display_order
   return {
-    ...articlePayload.value,
+    ...payload,
     status: sideForm.value.status,
     category_slug: sideForm.value.category_slug.trim(),
     author_slug: sideForm.value.author_slug.trim(),
@@ -254,6 +265,36 @@ async function fetchArticles() {
     listErrorMessage.value = error instanceof ApiError ? error.message : 'دریافت مقاله‌ها ناموفق بود.'
   } finally {
     loading.value = false
+  }
+}
+
+async function downloadArticlesExport() {
+  exportingArticles.value = true
+  listErrorMessage.value = ''
+  try {
+    const exportData = await apiRequest<AdminArticleExportResponse>(
+      '/admin/articles/export',
+      { method: 'GET' },
+      adminAuthStore.accessToken,
+    )
+    const blob = new Blob([`${JSON.stringify(exportData, null, 2)}\n`], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'dongino-articles-export.json'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      adminAuthStore.logout()
+      await router.replace('/login')
+      return
+    }
+    listErrorMessage.value = error instanceof ApiError ? error.message : 'دانلود JSON مقاله‌ها ناموفق بود.'
+  } finally {
+    exportingArticles.value = false
   }
 }
 
@@ -390,6 +431,8 @@ async function loadArticle(articleId: string) {
         slug: detail.slug,
         status: detail.status,
         category_slug: detail.category.slug,
+        category_name: detail.category.name,
+        category_display_order: detail.category.display_order,
         author_slug: detail.author.slug,
         title: detail.title,
         summary: detail.summary,
@@ -543,6 +586,9 @@ function goToNextPage() {
           <strong>مقاله‌های موجود</strong>
           <span>برای ویرایش، مقاله را از لیست بارگذاری کن.</span>
         </div>
+        <button class="ghost-button" type="button" :disabled="exportingArticles" @click="downloadArticlesExport">
+          {{ exportingArticles ? 'در حال دانلود...' : 'دانلود JSON' }}
+        </button>
       </div>
       <div class="article-filters">
         <label class="field">

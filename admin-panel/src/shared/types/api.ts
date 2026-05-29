@@ -73,6 +73,8 @@ export interface ArticlePayload {
   slug: string
   status: 'draft' | 'published' | 'archived'
   category_slug: string
+  category_name?: string
+  category_display_order?: number
   author_slug: string
   title: string
   summary: string
@@ -146,6 +148,17 @@ export interface ArticleImageUploadResponse {
   filename: string
   stored_path: string
   hero_image_url: string
+}
+
+export interface AdminArticleExportResponse {
+  generated_at: string
+  articles: Array<ArticlePayload & {
+    category_name: string
+    category_display_order: number
+    missing_related_slugs: string[]
+  }>
+  categories: ArticleCategoryResponse[]
+  authors: ArticleAuthorResponse[]
 }
 
 export interface AdminUserListFilters {

@@ -354,6 +354,19 @@ class AdminArticleDetailResponse(ArticleDetailResponse):
     missing_related_slugs: list[str] = Field(default_factory=list)
 
 
+class AdminArticleExportItem(ArticleWriteRequest):
+    category_name: str
+    category_display_order: int
+    missing_related_slugs: list[str] = Field(default_factory=list)
+
+
+class AdminArticleExportResponse(BaseModel):
+    generated_at: datetime
+    articles: list[AdminArticleExportItem]
+    categories: list[ArticleCategoryResponse]
+    authors: list[ArticleAuthorResponse]
+
+
 class ArticleImageUploadResponse(BaseModel):
     filename: str
     stored_path: str

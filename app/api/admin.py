@@ -18,6 +18,7 @@ from app.schemas.admin import (
 )
 from app.schemas.articles import (
     AdminArticleDetailResponse,
+    AdminArticleExportResponse,
     AdminArticleListResponse,
     ArticleAuthorResponse,
     ArticleImageUploadResponse,
@@ -33,6 +34,7 @@ from app.services.articles_service import (
     create_article,
     create_author,
     create_category,
+    export_admin_articles,
     get_admin_article,
     get_admin_article_by_slug,
     list_admin_articles,
@@ -167,6 +169,14 @@ def admin_list_articles(
     db: Session = Depends(get_db),
 ) -> AdminArticleListResponse:
     return list_admin_articles(db, search=search, status_filter=status, category=category, page=page, page_size=page_size)
+
+
+@router.get("/articles/export", response_model=AdminArticleExportResponse)
+def admin_export_articles(
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> AdminArticleExportResponse:
+    return export_admin_articles(db)
 
 
 @router.get("/articles/slug/{slug}", response_model=AdminArticleDetailResponse)

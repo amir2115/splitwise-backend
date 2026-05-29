@@ -16,6 +16,8 @@ from app.core.time import utcnow
 from app.models.domain import Article, ArticleAuthor, ArticleCategory, ArticleRedirect, ArticleStatus
 from app.schemas.articles import (
     AdminArticleDetailResponse,
+    AdminArticleExportItem,
+    AdminArticleExportResponse,
     AdminArticleListItem,
     ArticleAuthorResponse,
     ArticleCategoryResponse,
@@ -112,6 +114,29 @@ def _admin_list_item(article: Article) -> AdminArticleListItem:
         **_list_item(article).model_dump(),
         related_slugs=article.related_slugs,
         missing_related_slugs=list(getattr(article, "_missing_related_slugs", [])),
+    )
+
+
+def _admin_export_item(article: Article) -> AdminArticleExportItem:
+    return AdminArticleExportItem(
+        slug=article.slug,
+        status=article.status.value,
+        category_slug=article.category.slug,
+        category_name=article.category.name,
+        category_display_order=article.category.display_order,
+        author_slug=article.author.slug,
+        title=article.title,
+        summary=article.summary,
+        tldr=article.tldr,
+        hero_icon=article.hero_icon,
+        hero_image_url=article.hero_image_url,
+        reading_minutes=article.reading_minutes,
+        published_at=article.published_at,
+        audience=article.audience,
+        body=article.body,
+        related_slugs=article.related_slugs,
+        missing_related_slugs=list(getattr(article, "_missing_related_slugs", [])),
+        seo=_seo_response(article).model_dump(),
     )
 
 
@@ -456,6 +481,27 @@ def list_admin_articles(
             published_count=int(status_counts.get(ArticleStatus.PUBLISHED, 0)),
             archived_count=int(status_counts.get(ArticleStatus.ARCHIVED, 0)),
         ),
+    )
+
+
+def export_admin_articles(db: Session) -> AdminArticleExportResponse:
+    articles = list(
+        db.scalars(
+            select(Article)
+            .options(joinedload(Article.category), joinedload(Article.author))
+            .order_by(Article.updated_at.desc(), Article.published_at.desc().nullslast())
+        ).all()
+    )
+    _attach_missing_related_slugs(db, articles)
+    categories = list(
+        db.scalars(select(ArticleCategory).order_by(ArticleCategory.display_order.asc(), ArticleCategory.name.asc())).all()
+    )
+    authors = list(db.scalars(select(ArticleAuthor).order_by(ArticleAuthor.name.asc())).all())
+    return AdminArticleExportResponse(
+        generated_at=utcnow(),
+        articles=[_admin_export_item(article) for article in articles],
+        categories=[_category_response(category) for category in categories],
+        authors=[_author_response(author) for author in authors],
     )
 
 

@@ -146,6 +146,38 @@ describe('ArticlesPage', () => {
     expect(mocks.apiRequest).toHaveBeenCalledWith('/admin/articles', expect.objectContaining({ method: 'POST' }), 'admin-token')
   })
 
+  it('uses pasted category metadata for the side panel and strips it from submit payload', async () => {
+    const payloadWithCategoryMeta = {
+      ...articlePayload,
+      category_name: 'راهنمای محصول',
+      category_display_order: 10,
+    }
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/admin/articles?')) return Promise.resolve(listResponse)
+      if (path === '/admin/categories') return Promise.resolve({ slug: 'guides' })
+      if (path === '/admin/articles/slug/valid-article') return Promise.reject(new mocks.MockApiError('not found', 404, null))
+      if (path === '/admin/articles' && init?.method === 'POST') return Promise.resolve({ ...articlePayload, id: 'article-id' })
+      return Promise.resolve(listResponse)
+    })
+    const wrapper = mount(ArticlesPage)
+    await flushPromises()
+
+    await wrapper.find('textarea').setValue(JSON.stringify(payloadWithCategoryMeta))
+    await flushPromises()
+    await wrapper.find('button.primary-button').trigger('click')
+    await flushPromises()
+
+    const categoryCall = mocks.apiRequest.mock.calls.find(([path]) => path === '/admin/categories')
+    expect(JSON.parse(categoryCall?.[1]?.body as string)).toMatchObject({
+      name: 'راهنمای محصول',
+      display_order: 10,
+    })
+    const createCall = mocks.apiRequest.mock.calls.find(([path, init]) => path === '/admin/articles' && init?.method === 'POST')
+    const submittedPayload = JSON.parse(createCall?.[1]?.body as string)
+    expect(submittedPayload.category_name).toBeUndefined()
+    expect(submittedPayload.category_display_order).toBeUndefined()
+  })
+
   it('updates an existing article when slug exists', async () => {
     mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
       if (path.startsWith('/admin/articles?')) return Promise.resolve(listResponse)
@@ -179,5 +211,32 @@ describe('ArticlesPage', () => {
 
     expect(wrapper.text()).toContain('cover.png')
     expect(createObjectURL).toHaveBeenCalledWith(file)
+  })
+
+  it('downloads the admin articles export JSON', async () => {
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    mocks.apiRequest.mockImplementation((path: string) => {
+      if (path.startsWith('/admin/articles?')) return Promise.resolve(listResponse)
+      if (path === '/admin/articles/export') {
+        return Promise.resolve({
+          generated_at: '2026-05-29T10:00:00Z',
+          articles: [],
+          categories: [],
+          authors: [],
+        })
+      }
+      return Promise.resolve(listResponse)
+    })
+    const wrapper = mount(ArticlesPage)
+    await flushPromises()
+
+    const downloadButton = wrapper.findAll('button').find((button) => button.text() === 'دانلود JSON')
+    await downloadButton?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/admin/articles/export', { method: 'GET' }, 'admin-token')
+    expect(createObjectURL).toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalled()
+    clickSpy.mockRestore()
   })
 })
