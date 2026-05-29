@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     sms_ir_invited_account_template_id: Optional[int] = None
     sms_ir_invited_account_link_parameter_name: str = "TOKEN"
     sms_ir_invited_account_group_name_parameter_name: str = "GROUP_NAME"
+    firebase_admin_credentials_path: Optional[str] = None
     web_app_base_url: Optional[str] = None
     phone_verification_code_length: int = 5
     phone_verification_ttl_seconds: int = 120

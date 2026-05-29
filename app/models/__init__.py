@@ -16,7 +16,7 @@ from app.models.domain import (
     Settlement,
     UserConnection,
 )
-from app.models.user import InvitedAccountToken, PasswordResetCode, PendingRegistration, PhoneVerificationCode, RefreshToken, User
+from app.models.user import FcmDeviceToken, InvitedAccountToken, PasswordResetCode, PendingRegistration, PhoneVerificationCode, RefreshToken, User
 
 __all__ = [
     "AppSetting",
@@ -32,6 +32,7 @@ __all__ = [
     "GroupCard",
     "GroupInvite",
     "GroupMembership",
+    "FcmDeviceToken",
     "InvitedAccountToken",
     "Member",
     "PendingRegistration",

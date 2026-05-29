@@ -16,6 +16,7 @@ from app.schemas.admin import (
     AdminUserUpdateRequest,
     AdminUsersQuery,
 )
+from app.schemas.notifications import AdminNotificationSendRequest, AdminNotificationSendResponse
 from app.schemas.articles import (
     AdminArticleDetailResponse,
     AdminArticleExportResponse,
@@ -42,6 +43,7 @@ from app.services.articles_service import (
     update_article,
     upload_article_hero_image,
 )
+from app.services.notification_service import send_admin_notification
 
 router = APIRouter()
 
@@ -129,6 +131,16 @@ def admin_patch_runtime_settings(
     db: Session = Depends(get_db),
 ) -> AdminRuntimeSettingsResponse:
     return update_runtime_settings(db, payload)
+
+
+@router.post("/notifications/send", response_model=AdminNotificationSendResponse)
+def admin_send_notification(
+    payload: AdminNotificationSendRequest,
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> AdminNotificationSendResponse:
+    result = send_admin_notification(db, payload)
+    return AdminNotificationSendResponse(attempted=result.attempted, sent=result.sent, failed=result.failed)
 
 
 @router.post("/categories", response_model=ArticleCategoryResponse, status_code=201)

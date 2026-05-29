@@ -28,6 +28,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     phone_verification_codes = relationship("PhoneVerificationCode", back_populates="user", cascade="all, delete-orphan")
     password_reset_codes = relationship("PasswordResetCode", back_populates="user", cascade="all, delete-orphan")
     invited_account_tokens = relationship("InvitedAccountToken", back_populates="user", cascade="all, delete-orphan")
+    fcm_device_tokens = relationship("FcmDeviceToken", back_populates="user", cascade="all, delete-orphan")
 
 
 class RefreshToken(UUIDPrimaryKeyMixin, Base):
@@ -41,6 +42,25 @@ class RefreshToken(UUIDPrimaryKeyMixin, Base):
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="refresh_tokens")
+
+
+class FcmDeviceToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "fcm_device_tokens"
+    __table_args__ = (
+        UniqueConstraint("user_id", "device_id", name="uq_fcm_device_tokens_user_device"),
+    )
+
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    token: Mapped[str] = mapped_column(String(4096), nullable=False, index=True)
+    platform: Mapped[str] = mapped_column(String(16), nullable=False, default="android", server_default="android", index=True)
+    android_variant: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    app_version_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    app_version_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    user = relationship("User", back_populates="fcm_device_tokens")
 
 
 class PhoneVerificationCode(UUIDPrimaryKeyMixin, TimestampMixin, Base):

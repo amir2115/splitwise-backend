@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import admin, app_download, articles, auth, expenses, group_cards, group_invites, groups, health, members, settlements, site_settings, sync
+from app.api import admin, app_download, articles, auth, expenses, group_cards, group_invites, groups, health, members, notifications, settlements, site_settings, sync
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -15,4 +15,5 @@ api_router.include_router(members.router, prefix="/members", tags=["members"])
 api_router.include_router(group_invites.router, prefix="/group-invites", tags=["group-invites"])
 api_router.include_router(expenses.router, prefix="/expenses", tags=["expenses"])
 api_router.include_router(settlements.router, prefix="/settlements", tags=["settlements"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
