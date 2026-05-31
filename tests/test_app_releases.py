@@ -61,12 +61,27 @@ def test_admin_can_create_upload_publish_and_list_app_release(client, tmp_path, 
     assert published.status_code == 200
     assert published.json()["is_published"] is True
 
+    updated = client.patch(
+        f"/api/v1/admin/app-releases/{release_id}",
+        headers=headers,
+        json={
+            "title": "دانلود نسخه اندروید",
+            "release_notes": ["بهبود پایداری", "متن ویرایش شده"],
+            "update_message": "این متن بعد از ویرایش از نسخه منتشرشده به سایت sync می‌شود.",
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "دانلود نسخه اندروید"
+    assert updated.json()["release_notes"] == ["بهبود پایداری", "متن ویرایش شده"]
+
     public_download = client.get("/api/v1/app-download")
     assert public_download.status_code == 200
     assert public_download.json()["version_name"] == "1.4.0"
+    assert public_download.json()["title"] == "دانلود نسخه اندروید"
     assert public_download.json()["direct_download_url"] == "https://cdn.example.com/files/app-releases/app-release_1.4.0.apk"
     assert public_download.json()["bazaar_url"] == "https://cafebazaar.ir/app/com.encer.splitwise"
     assert public_download.json()["primary_badge_text"] == "نسخه جدید"
+    assert public_download.json()["release_notes"] == ["بهبود پایداری", "متن ویرایش شده"]
     assert public_download.json()["is_direct_download_enabled"] is True
 
     setting = client.get("/api/v1/site-settings")

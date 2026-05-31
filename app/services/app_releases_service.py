@@ -16,10 +16,12 @@ from app.schemas.app_releases import (
     AppReleaseCreateRequest,
     AppReleaseListResponse,
     AppReleaseResponse,
+    AppReleaseUpdateRequest,
 )
-from app.services.app_download_service import APP_DOWNLOAD_SLUG, update_app_download_content
+from app.services.app_download_service import update_app_download_content
 from app.services.file_storage_service import build_storage_key, get_file_storage
 from app.services.runtime_settings_service import set_runtime_settings
+
 
 def _apk_filename_for_version(version_name: str) -> str:
     safe_version = re.sub(r"[^A-Za-z0-9._-]+", "-", version_name.strip()).strip(".-_")
@@ -72,11 +74,54 @@ def create_app_release(db: Session, payload: AppReleaseCreateRequest) -> AppRele
     return _release_response(release)
 
 
+def _sync_public_app_download(db: Session, release: AppRelease) -> None:
+    update_app_download_content(
+        db,
+        AppDownloadUpdate(
+            title=release.title,
+            subtitle=release.subtitle,
+            app_icon_url=release.app_icon_url,
+            version_name=release.version_name,
+            version_code=release.version_code,
+            release_date=release.release_date,
+            file_size=release.file_size,
+            bazaar_url=release.bazaar_url,
+            myket_url=release.myket_url,
+            direct_download_url=release.apk_url,
+            release_notes=release.release_notes,
+            primary_badge_text=release.primary_badge_text,
+            min_supported_version_code=release.min_supported_version_code,
+            update_mode=release.update_mode,
+            update_title=release.update_title,
+            update_message=release.update_message,
+        ),
+    )
+    if release.apk_url:
+        set_runtime_settings(db, {"apk_url": release.apk_url})
+
+
 def _find_release(db: Session, release_id: str) -> AppRelease:
     release = db.get(AppRelease, release_id)
     if not release:
         raise DomainError(code="app_release_not_found", message="App release not found", status_code=status.HTTP_404_NOT_FOUND)
     return release
+
+
+def update_app_release(db: Session, release_id: str, payload: AppReleaseUpdateRequest) -> AppReleaseResponse:
+    release = _find_release(db, release_id)
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(release, field, value)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise DomainError(code="app_release_version_code_taken", message="Version code already exists", status_code=status.HTTP_409_CONFLICT) from exc
+    db.refresh(release)
+    if release.is_published:
+        _sync_public_app_download(db, release)
+        db.refresh(release)
+    return _release_response(release)
 
 
 def upload_app_release_apk(db: Session, release_id: str, *, filename: str | None, content: bytes) -> AppReleaseApkUploadResponse:
@@ -117,30 +162,9 @@ def publish_app_release(db: Session, release_id: str) -> AppReleaseResponse:
     release.is_published = True
     release.published_at = now
 
-    update_app_download_content(
-        db,
-        AppDownloadUpdate(
-            title=release.title,
-            subtitle=release.subtitle,
-            app_icon_url=release.app_icon_url,
-            version_name=release.version_name,
-            version_code=release.version_code,
-            release_date=release.release_date,
-            file_size=release.file_size,
-            bazaar_url=release.bazaar_url,
-            myket_url=release.myket_url,
-            direct_download_url=release.apk_url,
-            release_notes=release.release_notes,
-            primary_badge_text=release.primary_badge_text,
-            min_supported_version_code=release.min_supported_version_code,
-            update_mode=release.update_mode,
-            update_title=release.update_title,
-            update_message=release.update_message,
-        ),
-    )
+    _sync_public_app_download(db, release)
     release.is_published = True
     release.published_at = now
-    set_runtime_settings(db, {"apk_url": release.apk_url})
     db.commit()
     db.refresh(release)
     return _release_response(release)

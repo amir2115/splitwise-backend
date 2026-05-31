@@ -9,6 +9,7 @@ import type {
   AppReleaseCreateRequest,
   AppReleaseItem,
   AppReleaseListResponse,
+  AppReleaseUpdateRequest,
 } from '@/shared/types/api'
 import { formatDate, formatNumber } from '@/shared/utils/format'
 
@@ -18,6 +19,7 @@ const loading = ref(false)
 const saving = ref(false)
 const uploadingId = ref('')
 const publishingId = ref('')
+const editingReleaseId = ref('')
 const errorMessage = ref('')
 const successMessage = ref('')
 const releases = ref<AppReleaseItem[]>([])
@@ -25,25 +27,31 @@ const selectedFiles = ref<Record<string, File | null>>({})
 const createSelectedFile = ref<File | null>(null)
 const createApkDragDepth = ref(0)
 const isDraggingCreateApk = ref(false)
-const form = ref({
-  title: 'دانلود اپلیکیشن',
-  subtitle: 'آخرین نسخه دنگینو را از کافه بازار، مایکت یا لینک مستقیم نصب کن.',
-  app_icon_url: 'https://splitwise.ir/android-chrome-512x512.png',
-  version_name: '',
-  version_code: null as number | null,
-  release_date: '',
-  file_size: '',
-  bazaar_url: 'https://cafebazaar.ir/app/com.encer.splitwise',
-  myket_url: 'https://myket.ir/app/com.encer.splitwise',
-  release_notes: '',
-  primary_badge_text: 'نسخه جدید',
-  min_supported_version_code: null as number | null,
-  update_mode: 'soft' as 'none' | 'soft' | 'hard',
-  update_title: '',
-  update_message: '',
-})
+
+function defaultReleaseForm() {
+  return {
+    title: 'دانلود اپلیکیشن',
+    subtitle: 'آخرین نسخه دنگینو را از کافه بازار، مایکت یا لینک مستقیم نصب کن.',
+    app_icon_url: 'https://splitwise.ir/android-chrome-512x512.png',
+    version_name: '',
+    version_code: null as number | null,
+    release_date: '',
+    file_size: '',
+    bazaar_url: 'https://cafebazaar.ir/app/com.encer.splitwise',
+    myket_url: 'https://myket.ir/app/com.encer.splitwise',
+    release_notes: '',
+    primary_badge_text: 'نسخه جدید',
+    min_supported_version_code: null as number | null,
+    update_mode: 'soft' as 'none' | 'soft' | 'hard',
+    update_title: '',
+    update_message: '',
+  }
+}
+
+const form = ref(defaultReleaseForm())
 
 const publishedRelease = computed(() => releases.value.find((release) => release.is_published) ?? null)
+const editingRelease = computed(() => releases.value.find((release) => release.id === editingReleaseId.value) ?? null)
 
 onMounted(() => {
   void fetchReleases()
@@ -76,7 +84,7 @@ async function fetchReleases() {
   }
 }
 
-function buildCreatePayload(): AppReleaseCreateRequest {
+function buildReleasePayload(): AppReleaseCreateRequest {
   const notes = form.value.release_notes
     .split('\n')
     .map((item) => item.trim())
@@ -100,6 +108,44 @@ function buildCreatePayload(): AppReleaseCreateRequest {
   }
 }
 
+function resetForm() {
+  form.value = defaultReleaseForm()
+  createSelectedFile.value = null
+  editingReleaseId.value = ''
+}
+
+function startEditingRelease(release: AppReleaseItem) {
+  editingReleaseId.value = release.id
+  createSelectedFile.value = null
+  errorMessage.value = ''
+  successMessage.value = ''
+  form.value = {
+    title: release.title,
+    subtitle: release.subtitle,
+    app_icon_url: release.app_icon_url ?? '',
+    version_name: release.version_name,
+    version_code: release.version_code,
+    release_date: release.release_date ?? '',
+    file_size: release.file_size ?? '',
+    bazaar_url: release.bazaar_url ?? '',
+    myket_url: release.myket_url ?? '',
+    release_notes: release.release_notes.join('\n'),
+    primary_badge_text: release.primary_badge_text ?? '',
+    min_supported_version_code: release.min_supported_version_code,
+    update_mode: release.update_mode ?? 'none',
+    update_title: release.update_title ?? '',
+    update_message: release.update_message ?? '',
+  }
+}
+
+async function submitReleaseForm() {
+  if (editingReleaseId.value) {
+    await updateRelease()
+  } else {
+    await createRelease()
+  }
+}
+
 async function createRelease() {
   if (!createSelectedFile.value) {
     errorMessage.value = 'ابتدا فایل APK نسخه جدید را انتخاب کن.'
@@ -113,7 +159,7 @@ async function createRelease() {
   try {
     createdRelease = await apiRequest<AppReleaseItem>(
       '/admin/app-releases',
-      { method: 'POST', body: JSON.stringify(buildCreatePayload()) },
+      { method: 'POST', body: JSON.stringify(buildReleasePayload()) },
       adminAuthStore.accessToken,
     )
 
@@ -126,24 +172,7 @@ async function createRelease() {
     )
 
     successMessage.value = `نسخه جدید ساخته شد و APK در ${response.apk_object_key} آپلود شد.`
-    form.value = {
-      title: 'دانلود اپلیکیشن',
-      subtitle: 'آخرین نسخه دنگینو را از کافه بازار، مایکت یا لینک مستقیم نصب کن.',
-      app_icon_url: 'https://splitwise.ir/android-chrome-512x512.png',
-      version_name: '',
-      version_code: null,
-      release_date: '',
-      file_size: '',
-      bazaar_url: 'https://cafebazaar.ir/app/com.encer.splitwise',
-      myket_url: 'https://myket.ir/app/com.encer.splitwise',
-      release_notes: '',
-      primary_badge_text: 'نسخه جدید',
-      min_supported_version_code: null,
-      update_mode: 'soft',
-      update_title: '',
-      update_message: '',
-    }
-    createSelectedFile.value = null
+    resetForm()
     await fetchReleases()
   } catch (error) {
     if (handleAuthError(error)) return
@@ -152,6 +181,42 @@ async function createRelease() {
     if (createdRelease) {
       await fetchReleases()
     }
+  } finally {
+    saving.value = false
+  }
+}
+
+async function updateRelease() {
+  if (!editingReleaseId.value) return
+  saving.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+  try {
+    const payload: AppReleaseUpdateRequest = buildReleasePayload()
+    const release = await apiRequest<AppReleaseItem>(
+      `/admin/app-releases/${editingReleaseId.value}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      adminAuthStore.accessToken,
+    )
+    let uploadMessage = ''
+    if (createSelectedFile.value) {
+      const data = new FormData()
+      data.set('file', createSelectedFile.value)
+      const response = await apiRequest<AppReleaseApkUploadResponse>(
+        `/admin/app-releases/${release.id}/apk`,
+        { method: 'POST', body: data },
+        adminAuthStore.accessToken,
+      )
+      uploadMessage = ` و APK در ${response.apk_object_key} آپلود شد`
+    }
+    successMessage.value = release.is_published
+      ? `نسخه منتشرشده و سایت به‌روزرسانی شد${uploadMessage}.`
+      : `نسخه به‌روزرسانی شد${uploadMessage}.`
+    resetForm()
+    await fetchReleases()
+  } catch (error) {
+    if (handleAuthError(error)) return
+    errorMessage.value = error instanceof ApiError ? error.message : 'ویرایش نسخه ناموفق بود.'
   } finally {
     saving.value = false
   }
@@ -266,12 +331,14 @@ async function publishRelease(release: AppReleaseItem) {
     </section>
 
     <section class="release-grid">
-      <form class="filters-card release-form" @submit.prevent="createRelease">
+      <form class="filters-card release-form" @submit.prevent="submitReleaseForm">
         <div class="panel-heading">
           <div>
-            <strong>نسخه جدید</strong>
-            <span>metadata نسخه و فایل APK را ثبت کن تا با ساخت نسخه روی آروان آپلود شود.</span>
+            <strong>{{ editingRelease ? `ویرایش نسخه ${editingRelease.version_name}` : 'نسخه جدید' }}</strong>
+            <span v-if="editingRelease">metadata نسخه را ویرایش کن؛ اگر APK جدید انتخاب شود، همان نسخه دوباره روی آروان آپلود می‌شود.</span>
+            <span v-else>metadata نسخه و فایل APK را ثبت کن تا با ساخت نسخه روی آروان آپلود شود.</span>
           </div>
+          <button v-if="editingRelease" class="ghost-button" type="button" @click="resetForm">انصراف</button>
         </div>
 
         <label class="field">
@@ -347,8 +414,8 @@ async function publishRelease(release: AppReleaseItem) {
           @drop.prevent.stop="onCreateApkDrop"
         >
           <div class="apk-dropzone__copy">
-            <strong>APK نسخه جدید</strong>
-            <span>{{ createSelectedFile?.name || 'فایل APK را اینجا بکش یا انتخاب کن.' }}</span>
+            <strong>{{ editingRelease ? 'APK جایگزین' : 'APK نسخه جدید' }}</strong>
+            <span>{{ createSelectedFile?.name || (editingRelease ? 'برای جایگزینی APK فایل جدید را بکش یا انتخاب کن.' : 'فایل APK را اینجا بکش یا انتخاب کن.') }}</span>
           </div>
           <input id="create-release-apk" type="file" accept=".apk,application/vnd.android.package-archive" @change="onCreateApkInput" />
           <label class="ghost-button" for="create-release-apk">انتخاب APK</label>
@@ -358,7 +425,7 @@ async function publishRelease(release: AppReleaseItem) {
           <button class="ghost-button" type="button" @click="clearCreateApk">حذف فایل</button>
         </div>
         <button class="primary-button" type="submit" :disabled="saving">
-          {{ saving ? 'در حال ساخت و آپلود...' : 'ساخت نسخه و آپلود APK' }}
+          {{ saving ? 'در حال ذخیره...' : editingRelease ? 'ذخیره تغییرات' : 'ساخت نسخه و آپلود APK' }}
         </button>
       </form>
 
@@ -405,6 +472,7 @@ async function publishRelease(release: AppReleaseItem) {
               <button class="ghost-button" type="button" :disabled="uploadingId === release.id" @click="uploadApk(release)">
                 {{ uploadingId === release.id ? 'در حال آپلود...' : 'آپلود APK' }}
               </button>
+              <button class="ghost-button" type="button" @click="startEditingRelease(release)">ویرایش</button>
               <button class="primary-button" type="button" :disabled="!release.apk_url || publishingId === release.id" @click="publishRelease(release)">
                 {{ publishingId === release.id ? 'در حال انتشار...' : 'انتشار' }}
               </button>

@@ -197,6 +197,8 @@ export interface AppReleaseCreateRequest {
   update_message?: string | null
 }
 
+export type AppReleaseUpdateRequest = Partial<AppReleaseCreateRequest>
+
 export interface AppReleaseApkUploadResponse {
   id: string
   filename: string

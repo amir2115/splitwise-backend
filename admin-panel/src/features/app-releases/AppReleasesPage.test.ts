@@ -119,4 +119,29 @@ describe('AppReleasesPage', () => {
     expect(uploadInit.body.get('file')).toBe(apk)
     expect(uploadToken).toBe('admin-token')
   })
+
+  it('edits an existing release from the release form', async () => {
+    apiRequest
+      .mockResolvedValueOnce(releasesResponse)
+      .mockResolvedValueOnce({ ...releasesResponse.items[0], title: 'دانلود نسخه اندروید' })
+      .mockResolvedValueOnce(releasesResponse)
+    const wrapper = mount(AppReleasesPage)
+    await flushPromises()
+
+    const editButton = wrapper.findAll('button').find((button) => button.text() === 'ویرایش')
+    expect(editButton).toBeTruthy()
+    await editButton?.trigger('click')
+    await wrapper.findAll('input[type="text"]')[0].setValue('دانلود نسخه اندروید')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    const [path, init, token] = apiRequest.mock.calls[1]
+    const payload = JSON.parse(init.body)
+    expect(path).toBe('/admin/app-releases/release-1')
+    expect(init.method).toBe('PATCH')
+    expect(payload.title).toBe('دانلود نسخه اندروید')
+    expect(payload.version_name).toBe('1.4.0')
+    expect(payload.release_notes).toEqual(['بهبود پایداری'])
+    expect(token).toBe('admin-token')
+  })
 })

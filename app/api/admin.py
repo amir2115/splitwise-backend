@@ -17,7 +17,13 @@ from app.schemas.admin import (
     AdminUsersQuery,
 )
 from app.schemas.notifications import AdminNotificationSendRequest, AdminNotificationSendResponse
-from app.schemas.app_releases import AppReleaseApkUploadResponse, AppReleaseCreateRequest, AppReleaseListResponse, AppReleaseResponse
+from app.schemas.app_releases import (
+    AppReleaseApkUploadResponse,
+    AppReleaseCreateRequest,
+    AppReleaseListResponse,
+    AppReleaseResponse,
+    AppReleaseUpdateRequest,
+)
 from app.schemas.articles import (
     AdminArticleDetailResponse,
     AdminArticleExportResponse,
@@ -31,7 +37,13 @@ from app.schemas.articles import (
     ArticleCategoryResponse,
 )
 from app.services.admin_service import authenticate_admin, build_admin_session, delete_user, get_runtime_settings, list_users, update_runtime_settings, update_user
-from app.services.app_releases_service import create_app_release, list_app_releases, publish_app_release, upload_app_release_apk
+from app.services.app_releases_service import (
+    create_app_release,
+    list_app_releases,
+    publish_app_release,
+    update_app_release,
+    upload_app_release_apk,
+)
 from app.services.articles_service import (
     archive_article,
     create_article,
@@ -160,6 +172,16 @@ def admin_create_app_release(
     db: Session = Depends(get_db),
 ) -> AppReleaseResponse:
     return create_app_release(db, payload)
+
+
+@router.patch("/app-releases/{release_id}", response_model=AppReleaseResponse)
+def admin_update_app_release(
+    payload: AppReleaseUpdateRequest,
+    release_id: str = Path(...),
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> AppReleaseResponse:
+    return update_app_release(db, release_id, payload)
 
 
 @router.post("/app-releases/{release_id}/apk", response_model=AppReleaseApkUploadResponse)
