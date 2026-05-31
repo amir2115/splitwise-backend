@@ -60,7 +60,8 @@ def download_uploaded_file(filename: str) -> FileResponse:
     if safe_name != filename or safe_name != APP_DOWNLOAD_APK_FILENAME:
         raise NotFoundError("file")
 
-    file_path = Path(settings.file_storage_local_dir) / safe_name
+    current_settings = get_settings()
+    file_path = Path(current_settings.file_storage_local_dir) / safe_name
     if not file_path.is_file():
         raise NotFoundError("file")
 
@@ -73,7 +74,8 @@ def download_article_image(filename: str) -> FileResponse:
     if safe_name != filename:
         raise NotFoundError("file")
 
-    file_path = Path(settings.file_storage_local_dir) / "articles" / safe_name
+    current_settings = get_settings()
+    file_path = Path(current_settings.file_storage_local_dir) / "articles" / safe_name
     if not file_path.is_file():
         raise NotFoundError("file")
 
@@ -87,7 +89,8 @@ def download_app_release_file_by_name(filename: str) -> FileResponse:
     if safe_name != filename or not safe_name.startswith("app-release_") or not safe_name.endswith(".apk"):
         raise NotFoundError("file")
 
-    file_path = Path(settings.file_storage_local_dir) / "app-releases" / safe_name
+    current_settings = get_settings()
+    file_path = Path(current_settings.file_storage_local_dir) / "app-releases" / safe_name
     if not file_path.is_file():
         raise NotFoundError("file")
 
@@ -101,7 +104,8 @@ def download_app_release_file(version_code: str, filename: str) -> FileResponse:
     if safe_version != version_code or safe_name != filename or not safe_name.startswith("app-release_") or not safe_name.endswith(".apk"):
         raise NotFoundError("file")
 
-    file_path = Path(settings.file_storage_local_dir) / "app-releases" / safe_version / safe_name
+    current_settings = get_settings()
+    file_path = Path(current_settings.file_storage_local_dir) / "app-releases" / safe_version / safe_name
     if not file_path.is_file():
         raise NotFoundError("file")
 
