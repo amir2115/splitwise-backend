@@ -80,14 +80,24 @@ describe('AppReleasesPage', () => {
     expect(wrapper.find('a[href="https://cdn.example.com/files/app-releases/app-release_1.4.0.apk"]').exists()).toBe(true)
   })
 
-  it('creates release with newline-separated release notes', async () => {
+  it('creates release with newline-separated release notes and uploads the APK', async () => {
     apiRequest
       .mockResolvedValueOnce({ items: [] })
       .mockResolvedValueOnce({ id: 'release-2' })
+      .mockResolvedValueOnce({
+        id: 'release-2',
+        filename: 'app-release_1.5.0.apk',
+        apk_object_key: 'app-releases/app-release_1.5.0.apk',
+        apk_url: 'https://cdn.example.com/files/app-releases/app-release_1.5.0.apk',
+      })
       .mockResolvedValueOnce(releasesResponse)
     const wrapper = mount(AppReleasesPage)
     await flushPromises()
 
+    const apk = new File(['apk-content'], 'release.apk', { type: 'application/vnd.android.package-archive' })
+    const apkInput = wrapper.find<HTMLInputElement>('#create-release-apk')
+    Object.defineProperty(apkInput.element, 'files', { value: [apk], configurable: true })
+    await apkInput.trigger('change')
     await wrapper.find('input[placeholder="1.4.0"]').setValue('1.5.0')
     await wrapper.find('input[inputmode="numeric"]').setValue(43)
     await wrapper.find('textarea').setValue('تغییر اول\nتغییر دوم')
@@ -101,5 +111,12 @@ describe('AppReleasesPage', () => {
     expect(payload.title).toBe('دانلود اپلیکیشن')
     expect(payload.app_icon_url).toBe('https://splitwise.ir/android-chrome-512x512.png')
     expect(payload.release_notes).toEqual(['تغییر اول', 'تغییر دوم'])
+
+    const [uploadPath, uploadInit, uploadToken] = apiRequest.mock.calls[2]
+    expect(uploadPath).toBe('/admin/app-releases/release-2/apk')
+    expect(uploadInit.method).toBe('POST')
+    expect(uploadInit.body).toBeInstanceOf(FormData)
+    expect(uploadInit.body.get('file')).toBe(apk)
+    expect(uploadToken).toBe('admin-token')
   })
 })

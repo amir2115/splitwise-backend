@@ -22,6 +22,9 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const releases = ref<AppReleaseItem[]>([])
 const selectedFiles = ref<Record<string, File | null>>({})
+const createSelectedFile = ref<File | null>(null)
+const createApkDragDepth = ref(0)
+const isDraggingCreateApk = ref(false)
 const form = ref({
   title: 'دانلود اپلیکیشن',
   subtitle: 'آخرین نسخه دنگینو را از کافه بازار، مایکت یا لینک مستقیم نصب کن.',
@@ -98,16 +101,31 @@ function buildCreatePayload(): AppReleaseCreateRequest {
 }
 
 async function createRelease() {
+  if (!createSelectedFile.value) {
+    errorMessage.value = 'ابتدا فایل APK نسخه جدید را انتخاب کن.'
+    return
+  }
+
   saving.value = true
   errorMessage.value = ''
   successMessage.value = ''
+  let createdRelease: AppReleaseItem | null = null
   try {
-    await apiRequest<AppReleaseItem>(
+    createdRelease = await apiRequest<AppReleaseItem>(
       '/admin/app-releases',
       { method: 'POST', body: JSON.stringify(buildCreatePayload()) },
       adminAuthStore.accessToken,
     )
-    successMessage.value = 'نسخه جدید ساخته شد. حالا APK را برای همان نسخه آپلود کن.'
+
+    const data = new FormData()
+    data.set('file', createSelectedFile.value)
+    const response = await apiRequest<AppReleaseApkUploadResponse>(
+      `/admin/app-releases/${createdRelease.id}/apk`,
+      { method: 'POST', body: data },
+      adminAuthStore.accessToken,
+    )
+
+    successMessage.value = `نسخه جدید ساخته شد و APK در ${response.apk_object_key} آپلود شد.`
     form.value = {
       title: 'دانلود اپلیکیشن',
       subtitle: 'آخرین نسخه دنگینو را از کافه بازار، مایکت یا لینک مستقیم نصب کن.',
@@ -125,13 +143,53 @@ async function createRelease() {
       update_title: '',
       update_message: '',
     }
+    createSelectedFile.value = null
     await fetchReleases()
   } catch (error) {
     if (handleAuthError(error)) return
-    errorMessage.value = error instanceof ApiError ? error.message : 'ساخت نسخه ناموفق بود.'
+    const fallback = createdRelease ? 'نسخه ساخته شد، اما آپلود APK ناموفق بود.' : 'ساخت نسخه ناموفق بود.'
+    errorMessage.value = error instanceof ApiError ? error.message : fallback
+    if (createdRelease) {
+      await fetchReleases()
+    }
   } finally {
     saving.value = false
   }
+}
+
+function selectCreateApk(file: File | null) {
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.apk')) {
+    errorMessage.value = 'فرمت فایل باید APK باشد.'
+    return
+  }
+  createSelectedFile.value = file
+  errorMessage.value = ''
+}
+
+function onCreateApkInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  selectCreateApk(input.files?.[0] ?? null)
+}
+
+function onCreateApkDragEnter() {
+  createApkDragDepth.value += 1
+  isDraggingCreateApk.value = true
+}
+
+function onCreateApkDragLeave() {
+  createApkDragDepth.value = Math.max(0, createApkDragDepth.value - 1)
+  isDraggingCreateApk.value = createApkDragDepth.value > 0
+}
+
+function onCreateApkDrop(event: DragEvent) {
+  createApkDragDepth.value = 0
+  isDraggingCreateApk.value = false
+  selectCreateApk(event.dataTransfer?.files?.[0] ?? null)
+}
+
+function clearCreateApk() {
+  createSelectedFile.value = null
 }
 
 function onFileInput(releaseId: string, event: Event) {
@@ -212,7 +270,7 @@ async function publishRelease(release: AppReleaseItem) {
         <div class="panel-heading">
           <div>
             <strong>نسخه جدید</strong>
-            <span>metadata نسخه را ثبت کن، سپس از لیست APK را آپلود کن.</span>
+            <span>metadata نسخه و فایل APK را ثبت کن تا با ساخت نسخه روی آروان آپلود شود.</span>
           </div>
         </div>
 
@@ -281,8 +339,26 @@ async function publishRelease(release: AppReleaseItem) {
           <span>RELEASE_NOTES</span>
           <textarea v-model="form.release_notes" rows="6" placeholder="هر خط یک تغییر" required></textarea>
         </label>
+        <div
+          :class="['apk-dropzone', isDraggingCreateApk && 'apk-dropzone--active']"
+          @dragenter.prevent.stop="onCreateApkDragEnter"
+          @dragover.prevent.stop="isDraggingCreateApk = true"
+          @dragleave.prevent.stop="onCreateApkDragLeave"
+          @drop.prevent.stop="onCreateApkDrop"
+        >
+          <div class="apk-dropzone__copy">
+            <strong>APK نسخه جدید</strong>
+            <span>{{ createSelectedFile?.name || 'فایل APK را اینجا بکش یا انتخاب کن.' }}</span>
+          </div>
+          <input id="create-release-apk" type="file" accept=".apk,application/vnd.android.package-archive" @change="onCreateApkInput" />
+          <label class="ghost-button" for="create-release-apk">انتخاب APK</label>
+        </div>
+        <div v-if="createSelectedFile" class="selected-apk-row">
+          <span>{{ createSelectedFile.name }}</span>
+          <button class="ghost-button" type="button" @click="clearCreateApk">حذف فایل</button>
+        </div>
         <button class="primary-button" type="submit" :disabled="saving">
-          {{ saving ? 'در حال ساخت...' : 'ساخت نسخه' }}
+          {{ saving ? 'در حال ساخت و آپلود...' : 'ساخت نسخه و آپلود APK' }}
         </button>
       </form>
 
@@ -390,6 +466,56 @@ async function publishRelease(release: AppReleaseItem) {
 .field textarea {
   width: 100%;
   resize: vertical;
+}
+
+.apk-dropzone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px dashed var(--color-border);
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.apk-dropzone--active {
+  border-color: var(--color-primary);
+  background: rgba(98, 179, 255, 0.1);
+}
+
+.apk-dropzone input {
+  display: none;
+}
+
+.apk-dropzone__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.apk-dropzone__copy strong,
+.selected-apk-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apk-dropzone__copy span {
+  color: var(--color-text-soft);
+  font-size: 12px;
+}
+
+.selected-apk-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-text-soft);
+  font-size: 12px;
 }
 
 .release-card {
