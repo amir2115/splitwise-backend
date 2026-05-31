@@ -18,6 +18,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements.txt
+        env:
+          PIP_INDEX_URL: ${{ vars.PIP_INDEX_URL }}
+          PIP_EXTRA_INDEX_URL: ${{ vars.PIP_EXTRA_INDEX_URL }}
+          PIP_TRUSTED_HOST: ${{ vars.PIP_TRUSTED_HOST }}
       - run: python -m pytest tests
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -33,6 +37,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
+        env:
+          NPM_CONFIG_REGISTRY: ${{ vars.NPM_CONFIG_REGISTRY }}
       - run: npm test
       - run: npm run build
         env:
@@ -71,21 +77,31 @@ jobs:
           docker version
       
       - name: Build backend image
+        env:
+          PIP_INDEX_URL: ${{ vars.PIP_INDEX_URL }}
+          PIP_EXTRA_INDEX_URL: ${{ vars.PIP_EXTRA_INDEX_URL }}
+          PIP_TRUSTED_HOST: ${{ vars.PIP_TRUSTED_HOST }}
         run: |
           cd "$GITHUB_WORKSPACE"
       
           docker build \
             --progress=plain \
+            --build-arg PIP_INDEX_URL="$PIP_INDEX_URL" \
+            --build-arg PIP_EXTRA_INDEX_URL="$PIP_EXTRA_INDEX_URL" \
+            --build-arg PIP_TRUSTED_HOST="$PIP_TRUSTED_HOST" \
             -t splitwise/backend:local \
             -f Dockerfile \
             .
 
       - name: Build admin panel image
+        env:
+          NPM_CONFIG_REGISTRY: ${{ vars.NPM_CONFIG_REGISTRY }}
         run: |
           cd "$GITHUB_WORKSPACE"
 
           docker build \
             --progress=plain \
+            --build-arg NPM_CONFIG_REGISTRY="$NPM_CONFIG_REGISTRY" \
             -t splitwise/admin-panel:local \
             ./admin-panel
 
