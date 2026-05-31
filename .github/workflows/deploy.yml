@@ -78,6 +78,8 @@ jobs:
       
       - name: Build backend image
         env:
+          APT_MIRROR: ${{ vars.APT_MIRROR || 'http://mirror-linux.runflare.com/debian' }}
+          APT_SECURITY_MIRROR: ${{ vars.APT_SECURITY_MIRROR || 'http://mirror-linux.runflare.com/debian-security' }}
           PIP_INDEX_URL: ${{ vars.PIP_INDEX_URL || 'https://mirror-pypi.runflare.com/simple' }}
           PIP_EXTRA_INDEX_URL: ${{ vars.PIP_EXTRA_INDEX_URL }}
           PIP_TRUSTED_HOST: ${{ vars.PIP_TRUSTED_HOST }}
@@ -86,6 +88,8 @@ jobs:
       
           docker build \
             --progress=plain \
+            --build-arg APT_MIRROR="$APT_MIRROR" \
+            --build-arg APT_SECURITY_MIRROR="$APT_SECURITY_MIRROR" \
             --build-arg PIP_INDEX_URL="$PIP_INDEX_URL" \
             --build-arg PIP_EXTRA_INDEX_URL="$PIP_EXTRA_INDEX_URL" \
             --build-arg PIP_TRUSTED_HOST="$PIP_TRUSTED_HOST" \

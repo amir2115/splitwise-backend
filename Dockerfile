@@ -1,5 +1,7 @@
 FROM python:3.12-slim AS runtime
 
+ARG APT_MIRROR=http://mirror-linux.runflare.com/debian
+ARG APT_SECURITY_MIRROR=http://mirror-linux.runflare.com/debian-security
 ARG PIP_INDEX_URL=https://mirror-pypi.runflare.com/simple
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_TRUSTED_HOST=
@@ -10,7 +12,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update \
+RUN set -eux; \
+    sed -i "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g; s|http://deb.debian.org/debian|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
