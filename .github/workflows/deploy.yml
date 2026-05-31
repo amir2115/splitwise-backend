@@ -38,7 +38,7 @@ jobs:
           node-version: '22'
       - run: npm ci
         env:
-          NPM_CONFIG_REGISTRY: ${{ vars.NPM_CONFIG_REGISTRY }}
+          NPM_CONFIG_REGISTRY: ${{ vars.NPM_CONFIG_REGISTRY || 'https://mirror-npm.runflare.com/' }}
       - run: npm test
       - run: npm run build
         env:
@@ -99,7 +99,7 @@ jobs:
 
       - name: Build admin panel image
         env:
-          NPM_CONFIG_REGISTRY: ${{ vars.NPM_CONFIG_REGISTRY }}
+          NPM_CONFIG_REGISTRY: ${{ vars.NPM_CONFIG_REGISTRY || 'https://mirror-npm.runflare.com/' }}
         run: |
           cd "$GITHUB_WORKSPACE"
 

@@ -3,7 +3,7 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 ARG VITE_API_BASE_URL=https://api.splitwise.ir/api/v1
-ARG NPM_CONFIG_REGISTRY=
+ARG NPM_CONFIG_REGISTRY=https://mirror-npm.runflare.com/
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 COPY package*.json ./
