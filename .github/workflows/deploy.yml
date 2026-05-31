@@ -19,7 +19,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r requirements.txt
         env:
-          PIP_INDEX_URL: ${{ vars.PIP_INDEX_URL }}
+          PIP_INDEX_URL: ${{ vars.PIP_INDEX_URL || 'https://mirror-pypi.runflare.com/simple' }}
           PIP_EXTRA_INDEX_URL: ${{ vars.PIP_EXTRA_INDEX_URL }}
           PIP_TRUSTED_HOST: ${{ vars.PIP_TRUSTED_HOST }}
       - run: python -m pytest tests
@@ -78,7 +78,7 @@ jobs:
       
       - name: Build backend image
         env:
-          PIP_INDEX_URL: ${{ vars.PIP_INDEX_URL }}
+          PIP_INDEX_URL: ${{ vars.PIP_INDEX_URL || 'https://mirror-pypi.runflare.com/simple' }}
           PIP_EXTRA_INDEX_URL: ${{ vars.PIP_EXTRA_INDEX_URL }}
           PIP_TRUSTED_HOST: ${{ vars.PIP_TRUSTED_HOST }}
         run: |

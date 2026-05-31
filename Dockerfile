@@ -1,6 +1,6 @@
 FROM python:3.12-slim AS runtime
 
-ARG PIP_INDEX_URL=
+ARG PIP_INDEX_URL=https://mirror-pypi.runflare.com/simple
 ARG PIP_EXTRA_INDEX_URL=
 ARG PIP_TRUSTED_HOST=
 
