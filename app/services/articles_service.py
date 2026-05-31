@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import base64
+import mimetypes
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
-from urllib.parse import urljoin
 
 from fastapi import status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import DomainError
-from app.core.config import get_settings
 from app.core.time import utcnow
 from app.models.domain import Article, ArticleAuthor, ArticleCategory, ArticleRedirect, ArticleStatus
 from app.schemas.articles import (
@@ -39,6 +38,7 @@ from app.schemas.articles import (
     SitemapArticleItem,
     SitemapArticlesResponse,
 )
+from app.services.file_storage_service import build_storage_key, get_file_storage
 
 
 def _encode_cursor(offset: int) -> str:
@@ -322,16 +322,14 @@ def upload_article_hero_image(db: Session, article_id: str, *, filename: str | N
         raise DomainError(code="invalid_article_image", message="Article image file is empty")
 
     article = _find_article_by_id(db, article_id)
-    settings = get_settings()
-    upload_dir = Path(settings.article_image_upload_dir)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
     stored_filename = f"{article.slug}{extension}"
-    stored_path = upload_dir / stored_filename
-    stored_path.write_bytes(content)
+    stored = get_file_storage().put_bytes(
+        key=build_storage_key("articles", stored_filename),
+        content=content,
+        content_type=mimetypes.guess_type(stored_filename)[0] or "application/octet-stream",
+    )
 
-    base_url = settings.article_image_public_base_url.rstrip("/") + "/"
-    hero_image_url = urljoin(base_url, f"files/articles/{stored_filename}")
+    hero_image_url = stored.public_url
     article.hero_image_url = hero_image_url
     if not article.og_image_url:
         article.og_image_url = hero_image_url
@@ -339,7 +337,7 @@ def upload_article_hero_image(db: Session, article_id: str, *, filename: str | N
 
     return ArticleImageUploadResponse(
         filename=stored_filename,
-        stored_path=str(stored_path),
+        stored_path=stored.key,
         hero_image_url=hero_image_url,
     )
 

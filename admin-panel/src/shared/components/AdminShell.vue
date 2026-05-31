@@ -8,6 +8,7 @@ const router = useRouter()
 
 const navItems = [
   { to: '/articles', label: 'مقاله‌ها', hint: 'انتشار و آپلود تصویر' },
+  { to: '/app-releases', label: 'نسخه‌های اپ', hint: 'APK و تاریخچه انتشار' },
   { to: '/users', label: 'کاربران', hint: 'مدیریت حساب‌ها' },
   { to: '/settings', label: 'تنظیمات', hint: 'سایت و پیامک' },
 ]

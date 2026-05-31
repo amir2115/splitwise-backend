@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import ArticlesPage from '@/features/articles/ArticlesPage.vue'
+import AppReleasesPage from '@/features/app-releases/AppReleasesPage.vue'
 import LoginPage from '@/features/auth/LoginPage.vue'
 import SettingsPage from '@/features/settings/SettingsPage.vue'
 import UsersPage from '@/features/users/UsersPage.vue'
@@ -12,6 +13,7 @@ export const router = createRouter({
     { path: '/', redirect: '/articles' },
     { path: '/login', component: LoginPage, meta: { guestOnly: true } },
     { path: '/articles', component: ArticlesPage, meta: { requiresAuth: true } },
+    { path: '/app-releases', component: AppReleasesPage, meta: { requiresAuth: true } },
     { path: '/users', component: UsersPage, meta: { requiresAuth: true } },
     { path: '/settings', component: SettingsPage, meta: { requiresAuth: true } },
   ],

@@ -150,6 +150,60 @@ export interface ArticleImageUploadResponse {
   hero_image_url: string
 }
 
+export interface AppReleaseItem {
+  id: string
+  version_name: string
+  version_code: number
+  title: string
+  subtitle: string
+  app_icon_url: string | null
+  release_date: string | null
+  file_size: string | null
+  bazaar_url: string | null
+  myket_url: string | null
+  release_notes: string[]
+  primary_badge_text: string | null
+  min_supported_version_code: number | null
+  update_mode: 'none' | 'soft' | 'hard' | null
+  update_title: string | null
+  update_message: string | null
+  apk_object_key: string | null
+  apk_url: string | null
+  is_published: boolean
+  published_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AppReleaseListResponse {
+  items: AppReleaseItem[]
+}
+
+export interface AppReleaseCreateRequest {
+  version_name: string
+  version_code: number
+  title: string
+  subtitle: string
+  app_icon_url?: string | null
+  release_date?: string | null
+  file_size?: string | null
+  bazaar_url?: string | null
+  myket_url?: string | null
+  release_notes: string[]
+  primary_badge_text?: string | null
+  min_supported_version_code?: number | null
+  update_mode?: 'none' | 'soft' | 'hard' | null
+  update_title?: string | null
+  update_message?: string | null
+}
+
+export interface AppReleaseApkUploadResponse {
+  id: string
+  filename: string
+  apk_object_key: string
+  apk_url: string
+}
+
 export interface AdminArticleExportResponse {
   generated_at: string
   articles: Array<ArticlePayload & {

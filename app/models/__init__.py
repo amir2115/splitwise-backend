@@ -1,6 +1,7 @@
 from app.models.domain import (
     AppSetting,
     AppDownloadContent,
+    AppRelease,
     Article,
     ArticleAuthor,
     ArticleCategory,
@@ -21,6 +22,7 @@ from app.models.user import FcmDeviceToken, InvitedAccountToken, PasswordResetCo
 __all__ = [
     "AppSetting",
     "AppDownloadContent",
+    "AppRelease",
     "Article",
     "ArticleAuthor",
     "ArticleCategory",

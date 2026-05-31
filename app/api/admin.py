@@ -17,6 +17,7 @@ from app.schemas.admin import (
     AdminUsersQuery,
 )
 from app.schemas.notifications import AdminNotificationSendRequest, AdminNotificationSendResponse
+from app.schemas.app_releases import AppReleaseApkUploadResponse, AppReleaseCreateRequest, AppReleaseListResponse, AppReleaseResponse
 from app.schemas.articles import (
     AdminArticleDetailResponse,
     AdminArticleExportResponse,
@@ -30,6 +31,7 @@ from app.schemas.articles import (
     ArticleCategoryResponse,
 )
 from app.services.admin_service import authenticate_admin, build_admin_session, delete_user, get_runtime_settings, list_users, update_runtime_settings, update_user
+from app.services.app_releases_service import create_app_release, list_app_releases, publish_app_release, upload_app_release_apk
 from app.services.articles_service import (
     archive_article,
     create_article,
@@ -141,6 +143,43 @@ def admin_send_notification(
 ) -> AdminNotificationSendResponse:
     result = send_admin_notification(db, payload)
     return AdminNotificationSendResponse(attempted=result.attempted, sent=result.sent, failed=result.failed)
+
+
+@router.get("/app-releases", response_model=AppReleaseListResponse)
+def admin_list_app_releases(
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> AppReleaseListResponse:
+    return list_app_releases(db)
+
+
+@router.post("/app-releases", response_model=AppReleaseResponse, status_code=201)
+def admin_create_app_release(
+    payload: AppReleaseCreateRequest,
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> AppReleaseResponse:
+    return create_app_release(db, payload)
+
+
+@router.post("/app-releases/{release_id}/apk", response_model=AppReleaseApkUploadResponse)
+async def admin_upload_app_release_apk(
+    release_id: str = Path(...),
+    file: UploadFile = File(...),
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> AppReleaseApkUploadResponse:
+    content = await file.read()
+    return upload_app_release_apk(db, release_id, filename=file.filename, content=content)
+
+
+@router.post("/app-releases/{release_id}/publish", response_model=AppReleaseResponse)
+def admin_publish_app_release(
+    release_id: str = Path(...),
+    _: str = Depends(get_current_admin_username),
+    db: Session = Depends(get_db),
+) -> AppReleaseResponse:
+    return publish_app_release(db, release_id)
 
 
 @router.post("/categories", response_model=ArticleCategoryResponse, status_code=201)

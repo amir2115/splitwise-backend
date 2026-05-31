@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     app_download_public_base_url: str = "https://api.splitwise.ir"
     article_image_upload_dir: str = "/files/articles"
     article_image_public_base_url: str = "https://api.splitwise.ir"
+    file_storage_backend: str = "local"
+    file_storage_local_dir: str = "/files"
+    file_storage_public_base_url: Optional[str] = None
+    file_storage_prefix: str = ""
+    arvan_s3_endpoint_url: Optional[str] = None
+    arvan_s3_region: str = "ir-thr-at1"
+    arvan_s3_bucket: Optional[str] = None
+    arvan_s3_access_key_id: Optional[str] = None
+    arvan_s3_secret_access_key: Optional[str] = None
     phone_verification_required: bool = False
     admin_panel_username: Optional[str] = None
     admin_panel_password: Optional[str] = None

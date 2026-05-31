@@ -60,7 +60,7 @@ def download_uploaded_file(filename: str) -> FileResponse:
     if safe_name != filename or safe_name != APP_DOWNLOAD_APK_FILENAME:
         raise NotFoundError("file")
 
-    file_path = Path(settings.app_download_upload_dir) / safe_name
+    file_path = Path(settings.file_storage_local_dir) / safe_name
     if not file_path.is_file():
         raise NotFoundError("file")
 
@@ -73,12 +73,39 @@ def download_article_image(filename: str) -> FileResponse:
     if safe_name != filename:
         raise NotFoundError("file")
 
-    file_path = Path(settings.article_image_upload_dir) / safe_name
+    file_path = Path(settings.file_storage_local_dir) / "articles" / safe_name
     if not file_path.is_file():
         raise NotFoundError("file")
 
     media_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
     return FileResponse(path=file_path, filename=safe_name, media_type=media_type)
+
+
+@app.get("/files/app-releases/{filename}")
+def download_app_release_file_by_name(filename: str) -> FileResponse:
+    safe_name = Path(filename).name
+    if safe_name != filename or not safe_name.startswith("app-release_") or not safe_name.endswith(".apk"):
+        raise NotFoundError("file")
+
+    file_path = Path(settings.file_storage_local_dir) / "app-releases" / safe_name
+    if not file_path.is_file():
+        raise NotFoundError("file")
+
+    return FileResponse(path=file_path, filename=safe_name, media_type="application/vnd.android.package-archive")
+
+
+@app.get("/files/app-releases/{version_code}/{filename}")
+def download_app_release_file(version_code: str, filename: str) -> FileResponse:
+    safe_version = Path(version_code).name
+    safe_name = Path(filename).name
+    if safe_version != version_code or safe_name != filename or not safe_name.startswith("app-release_") or not safe_name.endswith(".apk"):
+        raise NotFoundError("file")
+
+    file_path = Path(settings.file_storage_local_dir) / "app-releases" / safe_version / safe_name
+    if not file_path.is_file():
+        raise NotFoundError("file")
+
+    return FileResponse(path=file_path, filename=safe_name, media_type="application/vnd.android.package-archive")
 
 
 @app.get("/health", response_model=HealthResponse)

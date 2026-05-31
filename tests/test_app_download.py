@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.api import app_download as app_download_api
+from app.core.config import get_settings
 
 
 def setup_function() -> None:
@@ -182,8 +183,9 @@ def test_patch_app_download_validates_update_mode(client):
 
 def test_upload_app_download_apk_persists_file_and_returns_direct_link(client, tmp_path):
     app_download_api.settings.app_download_admin_secret = "top-secret"
-    app_download_api.settings.app_download_upload_dir = str(tmp_path)
-    app_download_api.settings.app_download_public_base_url = "https://api.splitwise.ir"
+    settings = get_settings()
+    settings.file_storage_local_dir = str(tmp_path)
+    settings.file_storage_public_base_url = "https://cdn.example.com/files"
 
     response = client.post(
         "/api/v1/admin/app-download/apk",
@@ -194,15 +196,17 @@ def test_upload_app_download_apk_persists_file_and_returns_direct_link(client, t
     assert response.status_code == 200
     assert response.json() == {
         "filename": "app-organic-release.apk",
-        "stored_path": str(tmp_path / "app-organic-release.apk"),
-        "direct_download_url": "https://api.splitwise.ir/files/app-organic-release.apk",
+        "stored_path": "app-organic-release.apk",
+        "direct_download_url": "https://cdn.example.com/files/app-organic-release.apk",
     }
     assert (tmp_path / "app-organic-release.apk").read_bytes() == b"apk-binary-content"
 
 
 def test_uploaded_apk_is_served_from_backend_files_route(client, tmp_path):
     app_download_api.settings.app_download_admin_secret = "top-secret"
-    app_download_api.settings.app_download_upload_dir = str(tmp_path)
+    settings = get_settings()
+    settings.file_storage_local_dir = str(tmp_path)
+    settings.file_storage_public_base_url = "https://api.splitwise.ir/files"
 
     upload_response = client.post(
         "/api/v1/admin/app-download/apk",
@@ -221,7 +225,9 @@ def test_uploaded_apk_is_served_from_backend_files_route(client, tmp_path):
 
 def test_upload_app_download_apk_overwrites_existing_file(client, tmp_path):
     app_download_api.settings.app_download_admin_secret = "top-secret"
-    app_download_api.settings.app_download_upload_dir = str(tmp_path)
+    settings = get_settings()
+    settings.file_storage_local_dir = str(tmp_path)
+    settings.file_storage_public_base_url = "https://api.splitwise.ir/files"
     existing_file = Path(tmp_path / "app-organic-release.apk")
     existing_file.write_bytes(b"old-content")
 
@@ -237,7 +243,7 @@ def test_upload_app_download_apk_overwrites_existing_file(client, tmp_path):
 
 def test_upload_app_download_apk_requires_valid_secret(client, tmp_path):
     app_download_api.settings.app_download_admin_secret = "top-secret"
-    app_download_api.settings.app_download_upload_dir = str(tmp_path)
+    get_settings().file_storage_local_dir = str(tmp_path)
 
     response = client.post(
         "/api/v1/admin/app-download/apk",
@@ -251,7 +257,7 @@ def test_upload_app_download_apk_requires_valid_secret(client, tmp_path):
 
 def test_upload_app_download_apk_rejects_non_apk_extension(client, tmp_path):
     app_download_api.settings.app_download_admin_secret = "top-secret"
-    app_download_api.settings.app_download_upload_dir = str(tmp_path)
+    get_settings().file_storage_local_dir = str(tmp_path)
 
     response = client.post(
         "/api/v1/admin/app-download/apk",

@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
-from urllib.parse import urljoin
-
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.errors import DomainError
 from app.models.domain import AppDownloadContent
 from app.schemas.app_download import AppDownloadApkUploadResponse, AppDownloadResponse, AppDownloadSnapshot, AppDownloadUpdate
+from app.services.file_storage_service import build_storage_key, get_file_storage
 
 APP_DOWNLOAD_SLUG = "app_download"
 APP_DOWNLOAD_APK_FILENAME = "app-organic-release.apk"
@@ -32,7 +29,6 @@ DEFAULT_APP_DOWNLOAD_PAYLOAD = {
     "update_title": None,
     "update_message": None,
 }
-settings = get_settings()
 
 
 def _default_payload() -> dict:
@@ -143,18 +139,17 @@ def upload_app_download_apk(*, filename: str | None, content: bytes) -> AppDownl
         raise DomainError(code="invalid_app_download_apk", message="APK file is required")
     if not filename.lower().endswith(".apk"):
         raise DomainError(code="invalid_app_download_apk", message="Only .apk files are supported")
+    if not content:
+        raise DomainError(code="invalid_app_download_apk", message="APK file is empty")
 
-    upload_dir = Path(settings.app_download_upload_dir)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    stored_path = upload_dir / APP_DOWNLOAD_APK_FILENAME
-    stored_path.write_bytes(content)
-
-    base_url = settings.app_download_public_base_url.rstrip("/") + "/"
-    direct_download_url = urljoin(base_url, f"files/{APP_DOWNLOAD_APK_FILENAME}")
+    stored = get_file_storage().put_bytes(
+        key=build_storage_key(APP_DOWNLOAD_APK_FILENAME),
+        content=content,
+        content_type="application/vnd.android.package-archive",
+    )
 
     return AppDownloadApkUploadResponse(
         filename=APP_DOWNLOAD_APK_FILENAME,
-        stored_path=str(stored_path),
-        direct_download_url=direct_download_url,
+        stored_path=stored.key,
+        direct_download_url=stored.public_url,
     )

@@ -27,6 +27,15 @@ services:
       PORT: 8000
       APP_DOWNLOAD_UPLOAD_DIR: /files
       ARTICLE_IMAGE_UPLOAD_DIR: /files/articles
+      FILE_STORAGE_BACKEND: ${FILE_STORAGE_BACKEND:-local}
+      FILE_STORAGE_LOCAL_DIR: /files
+      FILE_STORAGE_PUBLIC_BASE_URL: ${FILE_STORAGE_PUBLIC_BASE_URL:-https://api.splitwise.ir/files}
+      FILE_STORAGE_PREFIX: ${FILE_STORAGE_PREFIX:-}
+      ARVAN_S3_ENDPOINT_URL: ${ARVAN_S3_ENDPOINT_URL:-}
+      ARVAN_S3_REGION: ${ARVAN_S3_REGION:-ir-thr-at1}
+      ARVAN_S3_BUCKET: ${ARVAN_S3_BUCKET:-}
+      ARVAN_S3_ACCESS_KEY_ID: ${ARVAN_S3_ACCESS_KEY_ID:-}
+      ARVAN_S3_SECRET_ACCESS_KEY: ${ARVAN_S3_SECRET_ACCESS_KEY:-}
     volumes:
       - uploaded_files:/files
     depends_on:

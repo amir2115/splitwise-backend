@@ -269,9 +269,9 @@ def test_archive_article_returns_gone_for_public_detail(client: TestClient) -> N
 
 def test_admin_can_upload_article_hero_image_and_public_detail_expands_url(client: TestClient, tmp_path, monkeypatch) -> None:
     settings = get_settings()
-    monkeypatch.setattr(settings, "article_image_upload_dir", str(tmp_path))
-    monkeypatch.setattr(settings, "article_image_public_base_url", "https://api.splitwise.ir")
-    monkeypatch.setattr(main_api.settings, "article_image_upload_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "file_storage_local_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "file_storage_public_base_url", "https://cdn.example.com/files")
+    monkeypatch.setattr(main_api.settings, "file_storage_local_dir", str(tmp_path))
     headers = admin_headers(client)
     create_category_and_author(client, headers)
     created = client.post("/api/v1/admin/articles", headers=headers, json=article_payload())
@@ -287,16 +287,16 @@ def test_admin_can_upload_article_hero_image_and_public_detail_expands_url(clien
     assert response.status_code == 200
     assert response.json() == {
         "filename": "taghsim-hazine-safar.webp",
-        "stored_path": str(tmp_path / "taghsim-hazine-safar.webp"),
-        "hero_image_url": "https://api.splitwise.ir/files/articles/taghsim-hazine-safar.webp",
+        "stored_path": "articles/taghsim-hazine-safar.webp",
+        "hero_image_url": "https://cdn.example.com/files/articles/taghsim-hazine-safar.webp",
     }
-    assert (tmp_path / "taghsim-hazine-safar.webp").read_bytes() == b"webp-image-content"
+    assert (tmp_path / "articles" / "taghsim-hazine-safar.webp").read_bytes() == b"webp-image-content"
 
     public = client.get("/api/v1/articles/taghsim-hazine-safar")
     assert public.status_code == 200
     payload = public.json()
-    assert payload["hero_image_url"] == "https://api.splitwise.ir/files/articles/taghsim-hazine-safar.webp"
-    assert payload["seo"]["og_image_url"] == "https://api.splitwise.ir/files/articles/taghsim-hazine-safar.webp"
+    assert payload["hero_image_url"] == "https://cdn.example.com/files/articles/taghsim-hazine-safar.webp"
+    assert payload["seo"]["og_image_url"] == "https://cdn.example.com/files/articles/taghsim-hazine-safar.webp"
 
     download = client.get("/files/articles/taghsim-hazine-safar.webp")
     assert download.status_code == 200
@@ -306,9 +306,8 @@ def test_admin_can_upload_article_hero_image_and_public_detail_expands_url(clien
 
 def test_upload_article_hero_image_keeps_existing_og_image(client: TestClient, tmp_path, monkeypatch) -> None:
     settings = get_settings()
-    monkeypatch.setattr(settings, "article_image_upload_dir", str(tmp_path))
-    monkeypatch.setattr(settings, "article_image_public_base_url", "https://api.splitwise.ir")
-    monkeypatch.setattr(main_api.settings, "article_image_upload_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "file_storage_local_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "file_storage_public_base_url", "https://cdn.example.com/files")
     headers = admin_headers(client)
     create_category_and_author(client, headers)
     payload = article_payload()
@@ -325,14 +324,13 @@ def test_upload_article_hero_image_keeps_existing_og_image(client: TestClient, t
 
     public = client.get("/api/v1/articles/taghsim-hazine-safar")
     assert public.status_code == 200
-    assert public.json()["hero_image_url"] == "https://api.splitwise.ir/files/articles/taghsim-hazine-safar.png"
+    assert public.json()["hero_image_url"] == "https://cdn.example.com/files/articles/taghsim-hazine-safar.png"
     assert public.json()["seo"]["og_image_url"] == "https://cdn.example.com/custom-og.webp"
 
 
 def test_upload_article_hero_image_requires_admin_and_rejects_invalid_filenames(client: TestClient, tmp_path, monkeypatch) -> None:
     settings = get_settings()
-    monkeypatch.setattr(settings, "article_image_upload_dir", str(tmp_path))
-    monkeypatch.setattr(main_api.settings, "article_image_upload_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "file_storage_local_dir", str(tmp_path))
     headers = admin_headers(client)
     create_category_and_author(client, headers)
     created = client.post("/api/v1/admin/articles", headers=headers, json=article_payload())

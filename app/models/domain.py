@@ -230,6 +230,34 @@ class AppDownloadContent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     update_message: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
 
 
+class AppRelease(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "app_releases"
+    __table_args__ = (
+        UniqueConstraint("version_code", name="uq_app_releases_version_code"),
+        Index("idx_app_releases_published", "is_published", "published_at"),
+    )
+
+    version_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    version_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="دانلود اپلیکیشن", server_default="دانلود اپلیکیشن")
+    subtitle: Mapped[str] = mapped_column(String(1000), nullable=False, default="آخرین نسخه دنگینو را از استور دلخواهت نصب کن.", server_default="آخرین نسخه دنگینو را از استور دلخواهت نصب کن.")
+    app_icon_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    release_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    file_size: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    bazaar_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    myket_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    release_notes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    primary_badge_text: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    min_supported_version_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    update_mode: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    update_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    update_message: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    apk_object_key: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    apk_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class AppSetting(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "app_settings"
     __table_args__ = (UniqueConstraint("key", name="uq_app_settings_key"),)
