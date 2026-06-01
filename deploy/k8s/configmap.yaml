@@ -33,7 +33,7 @@ data:
   ARTICLE_IMAGE_PUBLIC_BASE_URL: "https://api.splitwise.ir"
   FILE_STORAGE_BACKEND: "s3"
   FILE_STORAGE_LOCAL_DIR: "/files"
-  FILE_STORAGE_PUBLIC_BASE_URL: "https://cdn.splitwise.ir/files"
+  FILE_STORAGE_PUBLIC_BASE_URL: "https://s3.ir-thr-at1.arvanstorage.ir/splitwise-public"
   FILE_STORAGE_PREFIX: ""
   ARVAN_S3_REGION: "ir-thr-at1"
   CORS_ALLOW_ORIGINS: "https://splitwise.ir,https://www.splitwise.ir,https://panel.splitwise.ir,https://pwa.splitwise.ir"

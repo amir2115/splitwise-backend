@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.models.domain import AppDownloadContent, Article, ArticleAuthor, ArticleCategory, ArticleStatus
+from app.models.domain import AppDownloadContent, AppRelease, Article, ArticleAuthor, ArticleCategory, ArticleStatus
 from scripts.migrate_files_to_s3 import migrate_files
+from scripts.rewrite_storage_public_urls import rewrite_storage_public_urls
 
 
 class FakeStorage:
@@ -67,3 +68,74 @@ def test_migrate_files_to_s3_uploads_legacy_files_and_updates_urls(db_session, t
 
     second_stats = migrate_files(db_session, files_root=tmp_path, storage=storage)
     assert second_stats == {"uploaded": 0, "articles_updated": 0, "app_download_updated": 0, "missing_files": 0}
+
+
+def test_rewrite_storage_public_urls_updates_existing_database_urls(db_session) -> None:
+    category = ArticleCategory(slug="guides", name="Guides", display_order=1)
+    author = ArticleAuthor(slug="editor", name="Editor")
+    db_session.add_all([category, author])
+    db_session.flush()
+    article = Article(
+        slug="legacy-url",
+        title="Legacy URL",
+        summary="Summary",
+        tldr="TLDR",
+        hero_icon="*",
+        hero_image_url="https://cdn.splitwise.ir/files/articles/legacy.webp",
+        reading_minutes=3,
+        category=category,
+        author=author,
+        body=[],
+        toc=[],
+        audience=[],
+        related_slugs=[],
+        og_image_url="https://api.splitwise.ir/files/articles/legacy.webp",
+        status=ArticleStatus.PUBLISHED,
+    )
+    app_download = AppDownloadContent(
+        slug="app_download",
+        title="Download",
+        subtitle="Subtitle",
+        direct_download_url="https://cdn.splitwise.ir/files/app-releases/app-release_2.0.0.apk",
+        release_notes=["note"],
+    )
+    app_release = AppRelease(
+        version_name="2.0.0",
+        version_code=2,
+        title="Download",
+        subtitle="Subtitle",
+        release_notes=["note"],
+        apk_object_key="app-releases/app-release_2.0.0.apk",
+        apk_url="https://cdn.splitwise.ir/files/app-releases/app-release_2.0.0.apk",
+    )
+    db_session.add_all([article, app_download, app_release])
+    db_session.commit()
+
+    stats = rewrite_storage_public_urls(
+        db_session,
+        old_base_urls=("https://cdn.splitwise.ir/files", "https://api.splitwise.ir/files"),
+        storage=FakeStorage(),
+    )
+
+    assert stats == {
+        "app_releases_updated": 1,
+        "articles_updated": 1,
+        "app_download_updated": 1,
+        "runtime_settings_updated": 0,
+    }
+    assert article.hero_image_url == "https://cdn.example.com/files/articles/legacy.webp"
+    assert article.og_image_url == "https://cdn.example.com/files/articles/legacy.webp"
+    assert app_download.direct_download_url == "https://cdn.example.com/files/app-releases/app-release_2.0.0.apk"
+    assert app_release.apk_url == "https://cdn.example.com/files/app-releases/app-release_2.0.0.apk"
+
+    second_stats = rewrite_storage_public_urls(
+        db_session,
+        old_base_urls=("https://cdn.splitwise.ir/files", "https://api.splitwise.ir/files"),
+        storage=FakeStorage(),
+    )
+    assert second_stats == {
+        "app_releases_updated": 0,
+        "articles_updated": 0,
+        "app_download_updated": 0,
+        "runtime_settings_updated": 0,
+    }
